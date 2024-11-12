@@ -1,1 +1,0 @@
-{"game_status": true, "scheduled_tasks": {"daily\u5f00\u673a_0400": {"action": "start", "time": 1731441600.0, "is_daily": true}, "daily\u5173\u673a_1200": {"action": "stop", "time": 1731384000.0, "is_daily": true}}}
