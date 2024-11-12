@@ -20,9 +20,12 @@
 #### 如何开始
 
 1. **安装插件**：在微信中搜索并添加 ChatGPT on WeChat 插件。
-2. 
-3. **创建角色**：根据提示创建你的角色，选择初始技能和背景故事。
-4. **开始游戏**：选择你想参与的活动，开始你的冒险旅程。
+   ```
+   #installp https://github.com/xiaoqidaov2/game.git
+   ```
+2. **开始游戏**：选择你想参与的活动，开始你的冒险旅程。
+![image](https://github.com/user-attachments/assets/78780e9e-cdd0-48f4-8d6b-28fd0c63616c)
+
 
 #### 社区与支持
 
