@@ -24,6 +24,8 @@
    #installp https://github.com/xiaoqidaov2/game.git
    ```
 2. **开始游戏**：选择你想参与的活动，开始你的冒险旅程。
+3. 
+![image](https://github.com/user-attachments/assets/ec039c64-de58-4c5c-83ef-97e2c61643d3)
 
 ![image](https://github.com/user-attachments/assets/78780e9e-cdd0-48f4-8d6b-28fd0c63616c)
 
