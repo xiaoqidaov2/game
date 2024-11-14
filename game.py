@@ -20,7 +20,7 @@ import json
 @plugins.register(
     name="Game",
     desc="一个简单的文字游戏系统",
-    version="0.1",
+    version="0.1.1",
     author="assistant",
     desire_priority=0
 )
@@ -38,6 +38,10 @@ class Game(Plugin):
     game_status = True  # 游戏系统状态
     scheduled_tasks = {}  # 定时任务字典
 
+    # 添加新的类变量
+    REMINDER_COST = 50  # 每条提醒消息的费用
+    REMINDER_DURATION = 24 * 60 * 60  # 提醒持续时间(24小时)
+    
     def __init__(self):
         super().__init__()
         self.handlers[Event.ON_HANDLE_CONTEXT] = self.on_handle_context
@@ -93,6 +97,19 @@ class Game(Plugin):
             
             # 初始化装备系统
             self.equipment_system = Equipment(self)
+            
+            # 初始化提醒系统
+            self.reminders = {}  # 格式: {user_id: {'content': str, 'expire_time': int}}
+            self._load_reminders()  # 从文件加载提醒
+            
+            # 初始化配置文件
+            config_file = os.path.join(self.data_dir, "config.json")
+            if not os.path.exists(config_file):
+                default_config = {
+                    "admins": ["xxx"]  # 默认管理员列表
+                }
+                with open(config_file, 'w', encoding='utf-8') as f:
+                    json.dump(default_config, f, ensure_ascii=False, indent=2)
             
         except Exception as e:
             logger.error(f"初始化游戏系统出错: {e}")
@@ -182,6 +199,78 @@ class Game(Plugin):
                     import shutil
                     shutil.copy2(self.player_file, backup_file)
 
+    def _load_reminders(self):
+        """从文件加载提醒数据"""
+        reminder_file = os.path.join(self.data_dir, "reminders.json")
+        if os.path.exists(reminder_file):
+            try:
+                with open(reminder_file, 'r', encoding='utf-8') as f:
+                    self.reminders = json.load(f)
+                # 清理过期提醒
+                current_time = int(time.time())
+                self.reminders = {
+                    k: v for k, v in self.reminders.items() 
+                    if v['expire_time'] > current_time
+                }
+            except Exception as e:
+                logger.error(f"加载提醒数据出错: {e}")
+                self.reminders = {}
+
+    def _save_reminders(self):
+        """保存提醒数据到文件"""
+        reminder_file = os.path.join(self.data_dir, "reminders.json")
+        try:
+            with open(reminder_file, 'w', encoding='utf-8') as f:
+                json.dump(self.reminders, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.error(f"保存提醒数据出错: {e}")
+
+    def set_reminder(self, user_id, content):
+        """设置提醒"""
+        player = self.get_player(user_id)
+        if not player:
+            return "您还没有注册游戏"
+            
+        if len(content.split()) < 2:
+            return "请使用正确的格式：提醒 内容"
+            
+        reminder_content = ' '.join(content.split()[1:])
+        # 去除感叹号和加号
+        reminder_content = reminder_content.replace('!', '').replace('！', '').replace('+', '')
+        
+        if len(reminder_content) > 50:  # 限制提醒长度
+            return "提醒内容不能超过50个字符"
+            
+        # 检查金币是否足够
+        if int(player.gold) < self.REMINDER_COST:
+            return f"设置提醒需要{self.REMINDER_COST}金币，您的金币不足"
+            
+        # 扣除金币
+        new_gold = int(player.gold) - self.REMINDER_COST
+        self._update_player_data(user_id, {'gold': str(new_gold)})
+        
+        # 保存提醒
+        self.reminders[user_id] = {
+            'content': reminder_content,
+            'expire_time': int(time.time()) + self.REMINDER_DURATION
+        }
+        self._save_reminders()
+        
+        return f"提醒设置成功！消息将在24小时内显示在每条游戏回复后面\n花费: {self.REMINDER_COST}金币"
+
+    def get_active_reminders(self):
+        """获取所有有效的提醒"""
+        current_time = int(time.time())
+        active_reminders = []
+        
+        for user_id, reminder in self.reminders.items():
+            if reminder['expire_time'] > current_time:
+                player = self.get_player(user_id)
+                if player:
+                    active_reminders.append(f"[{player.nickname}]: {reminder['content']}")
+                    
+        return "\n".join(active_reminders) if active_reminders else ""
+
     def on_handle_context(self, e_context: EventContext):
         if e_context['context'].type != ContextType.TEXT:
             return
@@ -196,7 +285,7 @@ class Game(Plugin):
         nickname = msg.actual_user_nickname if msg.is_group else msg.from_user_nickname
         if not nickname:
             return "无法获取您的昵称，请确保昵称已设置"
-        if not self.game_status and content not in ['开机', '关机', '定时']:
+        if not self.game_status and content not in ['注册', '开机', '关机', '定时', '查看定时', '取消定时', '清空定时']:
             return "游戏系统当前已关闭"
         # 获取当前ID用于日志记录
         current_id = msg.actual_user_id if msg.is_group else msg.from_user_id
@@ -233,11 +322,18 @@ class Game(Plugin):
             "查看定时": lambda n, i: self.show_scheduled_tasks(n),
             "取消定时": lambda n, i: self.cancel_scheduled_task(n, content),
             "清空定时": lambda n, i: self.clear_scheduled_tasks(n),
+            "提醒": lambda n, i: self.set_reminder(n, content),
+            "删除提醒": lambda n, i: self.delete_reminder(n),
         }
         
         cmd = content.split()[0]
         if cmd in cmd_handlers:
             reply = cmd_handlers[cmd](nickname, current_id)
+            # 添加活动提醒
+            reminders = self.get_active_reminders()
+            if reminders:
+                reply += f"\n\n📢 当前提醒:\n{reminders}"
+                reply += "\n📢 如何使用提醒:\n设置提醒: 提醒 内容"
             e_context['reply'] = Reply(ReplyType.TEXT, reply)
             e_context.action = EventAction.BREAK_PASS
         else:
@@ -286,6 +382,9 @@ class Game(Plugin):
 ————————————
 🏆 排行榜 [类型] - 查看排行榜
 🔄 更新用户ID [昵称] - 更新用户ID
+🔔 提醒 [内容] - 设置提醒
+🗑️ 删除提醒 - 删除提醒
+
 管理员功能
 ————————————
 🔧 开机 - 开启游戏系统
@@ -640,18 +739,18 @@ class Game(Plugin):
                 steal_amount = int(float(target['gold']) * steal_percent)
                 
                 if steal_amount > 0:
-                    new_player_gold = int(player['gold']) + steal_amount
+                    new_player_gold = int(player.gold) + steal_amount  # 修改这里
                     new_target_gold = int(target['gold']) - steal_amount
                     
                     self._update_player_data(user_id, {'gold': str(new_player_gold)})
                     self._update_player_data(target['user_id'], {'gold': str(new_target_gold)})
                     
                     # 失败者随机丢失一件物品
-                    target_items = target.get('items', '').split(',')
-                    if target_items and target_items[0]:  # 确保有物品
+                    target_items = json.loads(target.get('inventory', '[]'))
+                    if target_items:  # 确保有物品
                         lost_item = random.choice(target_items)
                         target_items.remove(lost_item)
-                        self._update_player_data(target['user_id'], {'items': ','.join(target_items)})
+                        self._update_player_data(target['user_id'], {'inventory': json.dumps(target_items)})
                         
                         return f"""你在战斗中击败了玩家 {target['nickname']}！
 你抢走了对方 {steal_amount} 金币！
@@ -666,21 +765,21 @@ class Game(Plugin):
             # 80%概率被抢劫
             if random.random() < 0.8:
                 steal_percent = random.uniform(0.1, 0.3)
-                steal_amount = int(float(player['gold']) * steal_percent)
+                steal_amount = int(float(player.gold) * steal_percent)  # 修改这里
                 
                 if steal_amount > 0:
-                    new_player_gold = int(player['gold']) - steal_amount
+                    new_player_gold = int(player.gold) - steal_amount  # 修改这里
                     new_target_gold = int(target['gold']) + steal_amount
                     
                     self._update_player_data(user_id, {'gold': str(new_player_gold)})
                     self._update_player_data(target['user_id'], {'gold': str(new_target_gold)})
                     
                     # 失败者随机丢失一件物品
-                    player_items = player.get('items', '').split(',')
-                    if player_items and player_items[0]:  # 确保有物品
-                        lost_item = random.choice(player_items)
-                        player_items.remove(lost_item)
-                        self._update_player_data(user_id, {'items': ','.join(player_items)})
+                    player_inventory = player.inventory  # 修改这里
+                    if player_inventory:  # 确保有物品
+                        lost_item = random.choice(player_inventory)
+                        player_inventory.remove(lost_item)
+                        self._update_player_data(user_id, {'inventory': json.dumps(player_inventory)})
                         
                         return f"""你在与玩家 {target['nickname']} 的战斗中失败了！
 对方抢走了你 {steal_amount} 金币！
@@ -1554,23 +1653,33 @@ class Game(Plugin):
 
     def toggle_game_system(self, user_id, action='toggle'):
         """切换游戏系统状态"""
-        player = self.get_player(user_id)
-        if not player:
-            return "您还没有注册游戏"
+        try:
+            player = self.get_player(user_id)
+            if not player:
+                # 检查是否是默认管理员
+                config_file = os.path.join(self.data_dir, "config.json")
+                if os.path.exists(config_file):
+                    with open(config_file, 'r', encoding='utf-8') as f:
+                        config = json.load(f)
+                        if user_id not in config.get("admins", []):
+                            return "您还没有注册游戏"
+                else:
+                    return "您还没有注册游戏"
+            elif not self._is_admin(player):
+                return "只有管理员才能操作游戏系统开关"
             
-        # 检查是否是管理员
-        if not self._is_admin(player):
-            return "只有管理员才能操作游戏系统开关"
-        
-        if action == 'toggle':
-            self.game_status = not self.game_status
-        elif action == 'start':
-            self.game_status = True
-        elif action == 'stop':
-            self.game_status = False
-        
-        self._save_game_state()
-        return f"游戏系统已{'开启' if self.game_status else '关闭'}"
+            if action == 'toggle':
+                self.game_status = not self.game_status
+            elif action == 'start':
+                self.game_status = True
+            elif action == 'stop':
+                self.game_status = False
+            
+            self._save_game_state()
+            return f"游戏系统已{'开启' if self.game_status else '关闭'}"
+        except Exception as e:
+            logger.error(f"切换游戏系统状态出错: {e}")
+            return "操作失败，请检查系统状态"
 
     def schedule_game_system(self, user_id, content):
         """设置定时开关机"""
@@ -1629,9 +1738,24 @@ class Game(Plugin):
 
     def _is_admin(self, player):
         """检查玩家是否是管理员"""
-        # 通过玩家昵称判断是否是管理员
-        admin_names = ['小柒道']  # 替换为实际的管理员昵称列表
-        return player.nickname in admin_names
+        try:
+            config_file = os.path.join(self.data_dir, "config.json")
+            if not os.path.exists(config_file):
+                # 创建默认配置文件
+                default_config = {
+                    "admins": ["xxx"]  # 默认管理员列表
+                }
+                with open(config_file, 'w', encoding='utf-8') as f:
+                    json.dump(default_config, f, ensure_ascii=False, indent=2)
+            
+            # 读取配置文件
+            with open(config_file, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            
+            return player.nickname in config.get("admins", [])
+        except Exception as e:
+            logger.error(f"读取管理员配置出错: {e}")
+            return False
 
     def show_scheduled_tasks(self, user_id):
         """显示所有定时任务"""
@@ -1775,3 +1899,18 @@ class Game(Plugin):
         except Exception as e:
             logger.error(f"清空定时任务出错: {e}")
             return "清空定时任务失败"
+
+    def delete_reminder(self, user_id):
+        """删除提醒"""
+        player = self.get_player(user_id)
+        if not player:
+            return "您还没有注册游戏"
+            
+        if user_id not in self.reminders:
+            return "您没有设置任何提醒"
+            
+        # 删除提醒
+        del self.reminders[user_id]
+        self._save_reminders()
+        
+        return "提醒已删除"
