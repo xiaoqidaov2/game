@@ -530,18 +530,24 @@ class Player:
         if equipped_armor and equipped_armor in items_info:
             armor_info = items_info[equipped_armor]
             armor_bonus = int(armor_info.get('defense', 0))
+            hp_bonus = int(armor_info.get('hp', 0))  # 添加生命值加成
             armor_stats = []
             if armor_info.get('attack', '0') != '0':
                 armor_stats.append(f"攻击{armor_info['attack']}")
             if armor_info.get('defense', '0') != '0':
                 armor_stats.append(f"防御{armor_info['defense']}")
+            if armor_info.get('hp', '0') != '0':  # 添加生命值显示
+                armor_stats.append(f"生命{armor_info['hp']}")
             armor_str = f"{equipped_armor}({', '.join(armor_stats)})" if armor_stats else equipped_armor
         else:
             armor_str = "无"
+            armor_bonus = 0
+            hp_bonus = 0  # 无装备时生命值加成为0
         
         # 计算总属性
         total_attack = base_attack + weapon_bonus
         total_defense = base_defense + armor_bonus
+        total_max_hp = self.max_hp + hp_bonus  # 计算总生命值上限
         
         # 婚姻状态
         spouses = self.spouse.split(',') if self.spouse else []
@@ -561,7 +567,7 @@ class Player:
             f"💰 金币: {self.gold}",
             f"📊 等级: {current_level}",
             f"✨ 经验: {self.exp}/{int(current_level * 100 * (1 + (current_level - 1) * 0.5))}",
-            f"❤️ 生命值: {self.hp}/{self.max_hp}",
+            f"❤️ 生命值: {self.hp}/{total_max_hp} (基础{self.max_hp} / 装备{hp_bonus})",  # 修改生命值显示
             f"⚔️ 攻击力: {total_attack} (基础{base_attack} / 装备{weapon_bonus})",
             f"🛡️ 防御力: {total_defense} (基础{base_defense} / 装备{armor_bonus})",
             f"🗡️ 装备武器: {weapon_str}",
