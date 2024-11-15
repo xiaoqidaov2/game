@@ -20,7 +20,7 @@ import json
 @plugins.register(
     name="Game",
     desc="一个简单的文字游戏系统",
-    version="0.1.1",
+    version="0.1.2",
     author="assistant",
     desire_priority=0
 )
