@@ -121,15 +121,46 @@ class Equipment:
         # 计算武器加成
         weapon = getattr(player, 'equipped_weapon', '')
         if weapon and weapon in items:
-            stats['attack'] += int(items[weapon].get('attack', 0))
-            stats['defense'] += int(items[weapon].get('defense', 0))
-            stats['hp'] += int(items[weapon].get('hp', 0))
+            weapon_item = items[weapon]
+            stats['attack'] += int(weapon_item.get('attack', 0))
+            stats['defense'] += int(weapon_item.get('defense', 0))
+            stats['hp'] += int(weapon_item.get('hp', 0))
             
         # 计算护甲加成
         armor = getattr(player, 'equipped_armor', '')
         if armor and armor in items:
-            stats['attack'] += int(items[armor].get('attack', 0))
-            stats['defense'] += int(items[armor].get('defense', 0))
-            stats['hp'] += int(items[armor].get('hp', 0))
+            armor_item = items[armor]
+            stats['attack'] += int(armor_item.get('attack', 0))
+            stats['defense'] += int(armor_item.get('defense', 0))
+            stats['hp'] += int(armor_item.get('hp', 0))
             
         return stats
+
+    def get_weapon_bonus(self, player) -> int:
+        """获取武器攻击加成"""
+        if not player.equipped_weapon:
+            return 0
+        
+        items = self.game.item_system.get_all_items()
+        weapon = items.get(player.equipped_weapon)
+        if not weapon:
+            return 0
+        
+        return int(weapon.get('attack', 0))
+
+    def get_armor_reduction(self, target) -> float:
+        """获取护甲减伤比例"""
+        if isinstance(target, dict):  # 如果是怪物
+            return 0.0  # 怪物没有装备,返回0减伤
+        
+        if not target.equipped_armor:
+            return 0.0
+        
+        items = self.game.item_system.get_all_items()
+        armor = items.get(target.equipped_armor)
+        if not armor:
+            return 0.0
+        
+        # 将防御值转换为减伤比例,每点防御提供1%减伤,最高80%
+        reduction = min(0.8, int(armor.get('defense', 0)) * 0.01)
+        return reduction
