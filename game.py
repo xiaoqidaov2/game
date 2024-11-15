@@ -1431,11 +1431,11 @@ class Game(Plugin):
             armor_reduction = self.equipment_system.get_armor_reduction(target)
             final_damage = max(1, (damage + weapon_bonus) * (1 - armor_reduction))
             damage = int(final_damage * random.uniform(0.8, 1.2))
-            monster_hp -= damage
+            target_hp -= damage  # 修改这里：从 monster_hp 改为 target_hp
             
             if round_num <= 5:
                 battle_log.append(f"\n第{round_num}回合")
-                battle_log.append(f"你对{monster['name']}造成 {damage} 点伤害")
+                battle_log.append(f"{attacker.nickname}对{target.nickname}造成 {damage} 点伤害")
             
             # 攻击者配偶协助(每个配偶30%概率)
             for spouse in attacker_spouses:
