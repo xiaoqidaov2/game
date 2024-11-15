@@ -800,6 +800,8 @@ class Game(Plugin):
         
         monster_hp = monster['hp']
         monster_max_hp = monster['hp']
+        monster_defense = monster['defense']  # 获取怪物防御值
+        
         battle_log = [f"⚔️ 遭遇了 {monster['name']}"]
         battle_log.append(f"怪物属性:")
         battle_log.append(f"❤️ 生命值: {monster['hp']}")
@@ -813,14 +815,16 @@ class Game(Plugin):
         important_events = []
         while player_hp > 0 and monster_hp > 0:
             # 玩家攻击
-            damage_multiplier = random.uniform(0.8, 1.2)
-            base_damage = max(1, player_attack - monster['defense'])
-            player_damage = int(base_damage * damage_multiplier)
-            monster_hp -= player_damage
+            damage = max(1, player_attack - monster_defense)  # 使用monster_defense
+            weapon_bonus = self.equipment_system.get_weapon_bonus(player)
+            armor_reduction = self.equipment_system.get_armor_reduction(monster)
+            final_damage = max(1, (damage + weapon_bonus) * (1 - armor_reduction))
+            damage = int(final_damage * random.uniform(0.8, 1.2))
+            monster_hp -= damage
             
             if round_num <= 5:
                 battle_log.append(f"\n第{round_num}回合")
-                battle_log.append(f"你对{monster['name']}造成 {player_damage} 点伤害")
+                battle_log.append(f"你对{monster['name']}造成 {damage} 点伤害")
             
             # 检查怪物是否进入狂暴状态
             if not is_berserk and monster_hp < monster_max_hp * 0.3 and random.random() < 0.4:
@@ -881,10 +885,10 @@ class Game(Plugin):
                 new_exp -= exp_needed
                 level_up = True
                 
-                level_factor = 1 + (new_level - 1) * 0.1
-                hp_increase = int(20 * level_factor)
-                attack_increase = int(5 * level_factor)
-                defense_increase = int(3 * level_factor)
+                # 使用固定增长值
+                hp_increase = 50      # 每级+50血量
+                attack_increase = 15  # 每级+15攻击
+                defense_increase = 10 # 每级+10防御
                 
                 new_max_hp = int(player.max_hp) + hp_increase
                 new_attack = int(player.attack) + attack_increase
@@ -1423,7 +1427,15 @@ class Game(Plugin):
         while attacker_hp > 0 and target_hp > 0:
             # 攻击者回合
             damage = max(1, attacker_attack - target_defense)
-            damage = int(damage * random.uniform(0.8, 1.2))
+            weapon_bonus = self.equipment_system.get_weapon_bonus(attacker)
+            armor_reduction = self.equipment_system.get_armor_reduction(target)
+            final_damage = max(1, (damage + weapon_bonus) * (1 - armor_reduction))
+            damage = int(final_damage * random.uniform(0.8, 1.2))
+            monster_hp -= damage
+            
+            if round_num <= 5:
+                battle_log.append(f"\n第{round_num}回合")
+                battle_log.append(f"你对{monster['name']}造成 {damage} 点伤害")
             
             # 攻击者配偶协助(每个配偶30%概率)
             for spouse in attacker_spouses:
@@ -1555,6 +1567,8 @@ class Game(Plugin):
         except Exception as e:
             logger.error(f"更新玩家数据出错: {e}")
             raise
+
+
 
 
     def show_inventory(self, user_id):
