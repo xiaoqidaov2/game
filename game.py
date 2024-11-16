@@ -669,7 +669,12 @@ class Game(Plugin):
                     if key == 'gold':
                         new_gold = int(player.gold) + value
                         self._update_player_data(user_id, {'gold': str(new_gold)})
-            result.append(f"触发事件: {event['name']}")
+                        # 添加金币变化提示
+                        if value > 0:
+                            result.append(f"💰 获得 {value} 金币")
+                        else:
+                            result.append(f"💸 失去 {abs(value)} 金币")
+            result.append(f"🎲 触发事件: {event['name']}")
             result.append(event['description'])
             
         elif block['type'] in ['空地', '直辖市', '省会', '地级市', '县城', '乡村']:
@@ -1510,6 +1515,7 @@ class Game(Plugin):
         except Exception as e:
             logger.error(f"更新玩家数据出错: {e}")
             raise
+
 
 
 
