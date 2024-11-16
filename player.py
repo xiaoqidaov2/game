@@ -188,6 +188,16 @@ class Player:
         """设置上次使用物品的时间"""
         self.data['last_item_use'] = str(value)
 
+    @property
+    def position(self) -> int:
+        """获取玩家位置"""
+        return int(self.data.get('position', '0'))
+        
+    @position.setter
+    def position(self, value: int):
+        """设置玩家位置"""
+        self.data['position'] = str(value)
+
     def update_data(self, updates: Dict[str, Any]) -> None:
         """更新玩家数据并保存到文件"""
         if not self.player_file or not self.standard_fields:
@@ -234,21 +244,22 @@ class Player:
             'nickname': nickname,
             'gold': '100',
             'level': '1',
-            'last_checkin': '',
-            'inventory': '[]',
             'hp': '100',
-            'max_hp': '100', 
+            'max_hp': '100',
             'attack': '10',
             'defense': '5',
             'exp': '0',
+            'inventory': '[]',
+            'last_checkin': '',
             'last_fishing': '',
             'rod_durability': '{}',
             'equipped_weapon': '',
             'equipped_armor': '',
+            'last_item_use': '0',
             'spouse': '',
             'marriage_proposal': '',
             'last_attack': '0',
-            'last_item_use': '0'
+            'position': '0'
         }
         return cls(data) 
 
@@ -413,7 +424,8 @@ class Player:
             'max_hp': (str, int),
             'attack': (str, int),
             'defense': (str, int),
-            'exp': (str, int)
+            'exp': (str, int),
+            'position': (str, int)
         }
         
         try:
