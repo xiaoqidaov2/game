@@ -179,9 +179,13 @@ class Player:
         self.data['equipped_fishing_rod'] = value
         
     @property
-    def last_item_use(self) -> int:
+    def last_item_use(self):
         """获取上次使用物品的时间"""
-        return int(self.data.get('last_item_use', '0'))
+        try:
+            return int(self.data.get('last_item_use', '0'))
+        except (ValueError, TypeError):
+            # 如果转换失败，返回0作为默认值
+            return 0
         
     @last_item_use.setter
     def last_item_use(self, value: int):
