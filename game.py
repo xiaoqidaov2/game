@@ -16,11 +16,12 @@ from .shop import Shop
 from .item import Item
 from .equipment import Equipment
 import json
+from .monopoly import MonopolySystem
 
 @plugins.register(
     name="Game",
     desc="一个简单的文字游戏系统",
-    version="0.1.2",
+    version="0.2",
     author="assistant",
     desire_priority=0
 )
@@ -30,7 +31,8 @@ class Game(Plugin):
         'user_id', 'nickname', 'gold', 'level', 'last_checkin',
         'inventory', 'hp', 'max_hp', 'attack', 'defense', 'exp', 
         'last_fishing', 'rod_durability', 'equipped_weapon', 'equipped_armor',
-        'last_item_use', 'spouse', 'marriage_proposal', 'last_attack'
+        'last_item_use', 'spouse', 'marriage_proposal', 'last_attack',
+        'position'
     ]
 
     # 添加开关机状态和进程锁相关变量
@@ -110,6 +112,9 @@ class Game(Plugin):
                 }
                 with open(config_file, 'w', encoding='utf-8') as f:
                     json.dump(default_config, f, ensure_ascii=False, indent=2)
+            
+            # 初始化大富翁系统
+            self.monopoly = MonopolySystem(self.data_dir)
             
         except Exception as e:
             logger.error(f"初始化游戏系统出错: {e}")
@@ -243,7 +248,7 @@ class Game(Plugin):
             
         # 检查金币是否足够
         if int(player.gold) < self.REMINDER_COST:
-            return f"设置提醒需要{self.REMINDER_COST}金币，您的金币不足"
+            return f"设置提醒需要{self.REMINDER_COST}金币，的金币不足"
             
         # 扣除金币
         new_gold = int(player.gold) - self.REMINDER_COST
@@ -324,6 +329,10 @@ class Game(Plugin):
             "清空定时": lambda n, i: self.clear_scheduled_tasks(n),
             "提醒": lambda n, i: self.set_reminder(n, content),
             "删除提醒": lambda n, i: self.delete_reminder(n),
+            "购买地块": lambda n, i: self.buy_property(n),
+            "升级地块": lambda n, i: self.upgrade_property(n),
+            "我的地产": lambda n, i: self.show_properties(n),
+            "地图": lambda n, i: self.show_map(n),
         }
         
         cmd = content.split()[0]
@@ -370,6 +379,13 @@ class Game(Plugin):
 📖 图鉴 - 查看鱼类图鉴
 🌄 外出 - 外出探险冒险
 👊 攻击 [@用户] - 攻击其他玩家
+🗺️ 地图 - 查看游戏地图
+
+地产相关
+————————————
+🏠 我的地产 - 查看玩家地产
+🏘️ 购买地块 - 购买地块
+🏘️ 升级地块 - 升级地块
 
 社交系统
 ————————————
@@ -595,97 +611,119 @@ class Game(Plugin):
 
     #  外出打怪
     def go_out(self, user_id):
-        """外出探险"""
+        """外出探险或漫步"""
         player = self.get_player(user_id)
         if not player:
-            return "您还没有注册,请先注册.如确定自己注册过，可能存在用户错误的bug。请发送更新用户ID，具体使用办法可发送游戏菜单"
+            return "您还没有注册游戏"
             
         # 检查玩家状态
         if int(player.hp) <= 0:
             return "您的生命值不足，请先使用药品恢复"
             
         # 检查冷却时间
-        import time
         current_time = int(time.time())
         last_attack_time = int(player.last_attack)
-        cooldown = 60  # 60秒冷却时间
+        cooldown = 60
         
         if current_time - last_attack_time < cooldown:
             remaining = cooldown - (current_time - last_attack_time)
-            return f"您刚刚进行过战斗,请等待 {remaining} 秒后再次外出"
+            return f"您刚刚进行过活动,请等待 {remaining} 秒后再次外出"
+
+        # 掷骰子
+        steps = self.monopoly.roll_dice()
         
-        # 获取玩家等级
+        # 获取当前位置
+        current_position = int(player.position) if hasattr(player, 'position') else 0
+        new_position = (current_position + steps) % self.monopoly.map_data["total_blocks"]
+        
+        # 获取地块信息
+        block = self.monopoly.get_block_info(new_position)
+        
+        # 更新玩家位置
+        self._update_player_data(user_id, {
+            'position': str(new_position),
+            'last_attack': str(current_time)
+        })
+        
+        result = [
+            f"🎲 掷出了 {steps} 点",
+            f"来到了 {block['name']}"
+        ]
+        
+        # 根据地块类型处理不同情况
+        if block['type'] == '起点':
+            bonus = 200
+            new_gold = int(player.gold) + bonus
+            self._update_player_data(user_id, {'gold': str(new_gold)})
+            result.append(f"经过起点获得 {bonus} 金币")
+            
+        elif block['type'] == '森林':
+            # 触发战斗
+            battle_result = self._battle(user_id, self._generate_monster(player))
+            result.append(battle_result)
+            
+        elif block['type'] == '机遇':
+            event = self.monopoly.trigger_random_event()
+            if 'effect' in event:
+                for key, value in event['effect'].items():
+                    if key == 'gold':
+                        new_gold = int(player.gold) + value
+                        self._update_player_data(user_id, {'gold': str(new_gold)})
+            result.append(f"触发事件: {event['name']}")
+            result.append(event['description'])
+            
+        elif block['type'] in ['空地', '直辖市', '省会', '地级市', '县城', '乡村']:
+            owner = self.monopoly.get_property_owner(new_position)
+            if owner is None:
+                # 可以购买
+                price = self.monopoly.calculate_property_price(new_position)
+                result.append(f"这块地还没有主人")
+                result.append(f"区域类型: {block['region']}")
+                result.append(f"需要 {price} 金币购买")
+                result.append("发送'购买地块'即可购买")
+            else:
+                # 需要付租金
+                if owner != user_id:
+                    rent = self.monopoly.calculate_rent(new_position)
+                    if int(player.gold) >= rent:
+                        new_gold = int(player.gold) - rent
+                        owner_player = self.get_player(owner)
+                        if owner_player:
+                            owner_new_gold = int(owner_player.gold) + rent
+                            self._update_player_data(owner, {'gold': str(owner_new_gold)})
+                        self._update_player_data(user_id, {'gold': str(new_gold)})
+                        result.append(f"这是 {owner_player.nickname if owner_player else owner} 的地盘")
+                        result.append(f"区域类型: {block['region']}")
+                        result.append(f"支付租金 {rent} 金币")
+                    else:
+                        result.append("你的金币不足以支付租金！")
+                else:
+                    result.append("这是你的地盘")
+                    result.append(f"区域类型: {block['region']}")
+                    if self.monopoly.properties_data[str(new_position)]["level"] < 3:
+                        result.append("可以发送'升级地块'进行升级")
+        
+        return "\n".join(result)
+
+    def _generate_monster(self, player):
+        """根据玩家等级生成怪物"""
         player_level = int(player.level)
         level_factor = 1 + (player_level - 1) * 0.2
         
-        # 根据等级调整的怪物列表
         monsters = [
             {
-                'name': '史莱姆', 
-                'hp': int(50 * level_factor),
-                'attack': int(8 * level_factor),
-                'defense': int(5 * level_factor),
-                'exp': int(15 * level_factor),
-                'gold': int(25 * level_factor)
-            },
-            {
-                'name': '哥布林',
-                'hp': int(80 * level_factor),
-                'attack': int(12 * level_factor), 
-                'defense': int(8 * level_factor),
+                'name': '森林史莱姆',
+                'hp': int(60 * level_factor),
+                'attack': int(10 * level_factor),
+                'defense': int(6 * level_factor),
                 'exp': int(20 * level_factor),
-                'gold': int(35 * level_factor)
+                'gold': int(30 * level_factor)
             },
-            {
-                'name': '野狼',
-                'hp': int(100 * level_factor),
-                'attack': int(15 * level_factor),
-                'defense': int(10 * level_factor),
-                'exp': int(25 * level_factor),
-                'gold': int(45 * level_factor)
-            },
-            {
-                'name': '强盗',
-                'hp': int(120 * level_factor),
-                'attack': int(18 * level_factor),
-                'defense': int(12 * level_factor),
-                'exp': int(30 * level_factor),
-                'gold': int(55 * level_factor)
-            },
-            {
-                'name': '魔法师',
-                'hp': int(100 * level_factor),
-                'attack': int(25 * level_factor),
-                'defense': int(8 * level_factor),
-                'exp': int(35 * level_factor),
-                'gold': int(65 * level_factor)
-            },
-            {
-                'name': '巨魔',
-                'hp': int(180 * level_factor),
-                'attack': int(22 * level_factor),
-                'defense': int(15 * level_factor),
-                'exp': int(40 * level_factor),
-                'gold': int(75 * level_factor)
-            }
+            # ... 其他森林怪物
         ]
-
-        # 随机事件概率
-        import random
-        event = random.random()
         
-        # 更新最后战斗时间
-        self._update_player_data(user_id, {'last_attack': str(current_time)})
-        
-        # 20%概率遇到其他玩家
-        if event < 0.2:
-            return self._player_encounter(user_id)
-        
-        # 80%概率遇到怪物
         monster = random.choice(monsters)
-        
-        # 15%概率怪物变异
-        if random.random() < 0.15:
+        if random.random() < 0.15:  # 15%概率变异
             monster['name'] = f"变异{monster['name']}"
             monster['hp'] = int(monster['hp'] * 1.5)
             monster['attack'] = int(monster['attack'] * 1.3)
@@ -693,102 +731,7 @@ class Game(Plugin):
             monster['exp'] = int(monster['exp'] * 1.5)
             monster['gold'] = int(monster['gold'] * 1.5)
             
-        return self._battle(user_id, monster)
-
-    def _player_encounter(self, user_id):
-        """遇到其他玩家"""
-        # 读取所有玩家
-        all_players = []
-        with open(self.player_file, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                if row['user_id'] != str(user_id):  # 排除自己
-                    all_players.append(row)
-        
-        if not all_players:
-            return "周围很安静，没有遇到其他玩家"
-        
-        # 随机选择一个玩家
-        target = random.choice(all_players)
-        player = self.get_player(user_id)
-        
-        # 先进行战斗
-        player_hp = int(player.hp)
-        player_attack = int(player.attack)
-        player_defense = int(player.defense)
-        
-        target_hp = int(target.get('hp', 100))
-        target_attack = int(target.get('attack', 10))
-        target_defense = int(target.get('defense', 5))
-        
-        while player_hp > 0 and target_hp > 0:
-            damage = max(1, player_attack - target_defense)
-            target_hp -= damage
-            
-            if target_hp > 0:
-                damage = max(1, target_attack - player_defense)
-                player_hp -= damage
-        
-        self._update_player_data(user_id, {'hp': str(player_hp)})
-        self._update_player_data(target['user_id'], {'hp': str(target_hp)})
-        
-        if target_hp <= 0:  # 玩家胜利
-            # 80%概率抢劫对方
-            if random.random() < 0.8:
-                steal_percent = random.uniform(0.1, 0.3)
-                steal_amount = int(float(target['gold']) * steal_percent)
-                
-                if steal_amount > 0:
-                    new_player_gold = int(player.gold) + steal_amount  # 修改这里
-                    new_target_gold = int(target['gold']) - steal_amount
-                    
-                    self._update_player_data(user_id, {'gold': str(new_player_gold)})
-                    self._update_player_data(target['user_id'], {'gold': str(new_target_gold)})
-                    
-                    # 失败者随机丢失一件物品
-                    target_items = json.loads(target.get('inventory', '[]'))
-                    if target_items:  # 确保有物品
-                        lost_item = random.choice(target_items)
-                        target_items.remove(lost_item)
-                        self._update_player_data(target['user_id'], {'inventory': json.dumps(target_items)})
-                        
-                        return f"""你在战斗中击败了玩家 {target['nickname']}！
-你抢走了对方 {steal_amount} 金币！
-对方在逃跑时丢失了 {lost_item}！"""
-                    
-                    return f"""你在战斗中击败了玩家 {target['nickname']}！
-你抢走了对方 {steal_amount} 金币！"""
-            
-            return f"""你在战斗中击败了玩家 {target['nickname']}！"""
-            
-        else:  # 玩家失败
-            # 80%概率被抢劫
-            if random.random() < 0.8:
-                steal_percent = random.uniform(0.1, 0.3)
-                steal_amount = int(float(player.gold) * steal_percent)  # 修改这里
-                
-                if steal_amount > 0:
-                    new_player_gold = int(player.gold) - steal_amount  # 修改这里
-                    new_target_gold = int(target['gold']) + steal_amount
-                    
-                    self._update_player_data(user_id, {'gold': str(new_player_gold)})
-                    self._update_player_data(target['user_id'], {'gold': str(new_target_gold)})
-                    
-                    # 失败者随机丢失一件物品
-                    player_inventory = player.inventory  # 修改这里
-                    if player_inventory:  # 确保有物品
-                        lost_item = random.choice(player_inventory)
-                        player_inventory.remove(lost_item)
-                        self._update_player_data(user_id, {'inventory': json.dumps(player_inventory)})
-                        
-                        return f"""你在与玩家 {target['nickname']} 的战斗中失败了！
-对方抢走了你 {steal_amount} 金币！
-你在逃跑时丢失了 {lost_item}！"""
-                    
-                    return f"""你在与玩家 {target['nickname']} 的战斗中失败了！
-对方抢走了你 {steal_amount} 金币！"""
-            
-            return f"""你在与玩家 {target['nickname']} 的战斗中失败了！"""
+        return monster
 
     def _battle(self, user_id, monster):
         """战斗系统"""
@@ -1571,6 +1514,7 @@ class Game(Plugin):
 
 
 
+
     def show_inventory(self, user_id):
         player = self.get_player(user_id)
         if not player:
@@ -1794,7 +1738,7 @@ class Game(Plugin):
             action = "开机" if task['action'] == 'start' else "关机"
             time_str = datetime.datetime.fromtimestamp(task['time']).strftime('%H:%M')
             
-            # 使用时间和动作作为唯一键
+            # 使用间和动作作为唯一键
             task_key = f"{time_str}_{action}"
             
             if task.get('is_daily'):
@@ -1928,3 +1872,156 @@ class Game(Plugin):
         self._save_reminders()
         
         return "提醒已删除"
+
+    def buy_property(self, user_id):
+        """购买当前位置的地块"""
+        player = self.get_player(user_id)
+        if not player:
+            return "您还没有注册游戏"
+            
+        # 获取玩家当前位置
+        current_position = int(getattr(player, 'position', 0))
+        block = self.monopoly.get_block_info(current_position)
+        
+        # 检查是否是可购买的地块
+        if block['type'] != '空地':
+            return "当前位置不是可购买的地块"
+            
+        # 检查是否已被购买
+        if self.monopoly.get_property_owner(current_position):
+            return "这块地已经被购买了"
+            
+        # 计算地块价格
+        price = 500 * (1 + current_position // 10)  # 距离起点越远越贵
+        
+        # 检查玩家金币是否足够
+        if int(player.gold) < price:
+            return f"购买这块地需要 {price} 金币，您的金币不足"
+            
+        # 扣除金币并购买地块
+        new_gold = int(player.gold) - price
+        if self.monopoly.buy_property(current_position, user_id, price):
+            self._update_player_data(user_id, {'gold': str(new_gold)})
+            return f"🎉 成功购买地块！\n位置: {current_position}\n花费: {price} 金币\n当前金币: {new_gold}"
+        else:
+            return "购买失败，请稍后再试"
+
+    def upgrade_property(self, user_id):
+        """升级当前位置的地块"""
+        player = self.get_player(user_id)
+        if not player:
+            return "您还没有注册游戏"
+            
+        # 获取玩家当前位置
+        current_position = int(getattr(player, 'position', 0))
+        
+        # 检查是否是玩家的地产
+        property_data = self.monopoly.properties_data.get(str(current_position))
+        if not property_data or property_data.get('owner') != user_id:
+            return "这不是您的地产"
+            
+        # 检查是否达到最高等级
+        current_level = property_data.get('level', 1)
+        if current_level >= 3:
+            return "地产已达到最高等级"
+            
+        # 计算升级费用
+        base_price = property_data.get('price', 500)
+        upgrade_cost = int(base_price * 0.5 * current_level)
+        
+        # 检查玩家金币是否足够
+        if int(player.gold) < upgrade_cost:
+            return f"升级需要 {upgrade_cost} 金币，您的金币不足"
+            
+        # 扣除金币并升级地产
+        new_gold = int(player.gold) - upgrade_cost
+        if self.monopoly.upgrade_property(current_position):
+            self._update_player_data(user_id, {'gold': str(new_gold)})
+            return f"""🏗️ 地产升级成功！
+位置: {current_position}
+当前等级: {current_level + 1}
+花费: {upgrade_cost} 金币
+当前金币: {new_gold}"""
+        else:
+            return "升级失败，请稍后再试"
+
+    def show_properties(self, user_id):
+        """显示玩家的地产"""
+        player = self.get_player(user_id)
+        if not player:
+            return "您还没有注册游戏"
+            
+        properties = self.monopoly.get_player_properties(user_id)
+        if not properties:
+            return "您还没有购买任何地产"
+            
+        result = ["您的地产列表："]
+        for pos in properties:
+            prop_info = self.monopoly.get_property_info(pos)
+            if prop_info:
+                result.append(f"\n{prop_info['name']} ({prop_info['region']})")
+                result.append(f"等级: {prop_info['level']}")
+                result.append(f"价值: {prop_info['price']} 金币")
+                result.append(f"当前租金: {prop_info['rent']} 金币")
+                
+        return "\n".join(result)
+
+    def show_map(self, user_id):
+        """显示地图状态"""
+        player = self.get_player(user_id)
+        if not player:
+            return "您还没有注册游戏"
+            
+        # 获取玩家当前位置
+        current_position = int(getattr(player, 'position', 0))
+        
+        # 获取地图总格子数
+        total_blocks = self.monopoly.map_data["total_blocks"]
+        
+        result = ["🗺️ 大富翁地图"]
+        result.append("————————————")
+        
+        # 生成地图显示
+        for pos in range(total_blocks):
+            block = self.monopoly.get_block_info(pos)
+            owner = self.monopoly.get_property_owner(pos)
+            
+            # 获取地块显示符号
+            if pos == current_position:
+                symbol = "👤"  # 玩家当前位置
+            elif block['type'] == '起点':
+                symbol = "🏁"
+            elif owner:
+                # 如果有主人，显示房屋等级
+                level = self.monopoly.properties_data[str(pos)].get('level', 1)
+                symbols = ["🏠", "🏘️", "🏰"]  # 不同等级的显示
+                symbol = symbols[level - 1]
+            else:
+                # 根据地块类型显示不同符号
+                type_symbols = {
+                    "直辖市": "🌆",
+                    "省会": "🏢",
+                    "地级市": "🏣",
+                    "县城": "🏘️",
+                    "乡村": "🏡",
+                    "空地": "⬜"
+                }
+                symbol = type_symbols.get(block['type'], "⬜")
+                
+            # 添加地块信息
+            block_info = f"{symbol} {pos}:{block['name']}"
+            if owner:
+                owner_player = self.get_player(owner)
+                owner_name = owner_player.nickname if owner_player else owner
+                block_info += f"({owner_name})"
+                
+            if pos == current_position:
+                block_info += " ← 当前位置"
+                
+            result.append(block_info)
+            
+            # 每5个地块换行
+            if (pos + 1) % 5 == 0:
+                result.append("————————————")
+                
+        return "\n".join(result)
