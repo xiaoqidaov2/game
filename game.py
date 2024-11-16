@@ -1890,7 +1890,8 @@ class Game(Plugin):
         block = self.monopoly.get_block_info(current_position)
         
         # 检查是否是可购买的地块
-        if block['type'] != '空地':
+        purchasable_types = ['空地', '直辖市', '省会', '地级市', '县城', '乡村']
+        if block['type'] not in purchasable_types:
             return "当前位置不是可购买的地块"
             
         # 检查是否已被购买
@@ -1898,7 +1899,17 @@ class Game(Plugin):
             return "这块地已经被购买了"
             
         # 计算地块价格
-        price = 500 * (1 + current_position // 10)  # 距离起点越远越贵
+        base_prices = {
+            '直辖市': 2000,
+            '省会': 1500,
+            '地级市': 1000,
+            '县城': 500,
+            '乡村': 300,
+            '空地': 200
+        }
+        base_price = base_prices.get(block['type'], 500)
+        distance_factor = 1 + (current_position // 10) * 0.2  # 每10格增加20%价格
+        price = int(base_price * distance_factor)
         
         # 检查玩家金币是否足够
         if int(player.gold) < price:
@@ -1908,7 +1919,11 @@ class Game(Plugin):
         new_gold = int(player.gold) - price
         if self.monopoly.buy_property(current_position, user_id, price):
             self._update_player_data(user_id, {'gold': str(new_gold)})
-            return f"🎉 成功购买地块！\n位置: {current_position}\n花费: {price} 金币\n当前金币: {new_gold}"
+            return f"""🎉 成功购买地块！
+位置: {block['name']}
+类型: {block['type']}
+花费: {price} 金币
+当前金币: {new_gold}"""
         else:
             return "购买失败，请稍后再试"
 
