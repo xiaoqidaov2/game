@@ -1,6 +1,7 @@
 import os
 import csv
 import random
+import pandas as pd  
 from plugins import *
 from common.log import logger
 from bridge.context import ContextType, Context
@@ -314,7 +315,7 @@ class Game(Plugin):
             "批量出售": lambda n, i: self.shop.sell_item(n, content),
             "外出": lambda n, i: self.go_out(n),
             "使用": lambda n, i: self.use_item(n, content),
-            "更新用户ID": lambda n, i: self.update_user_id(n, content),
+            "更新用户名": lambda n, i: self.update_user_name(i, content),
             "排行榜": lambda n, i: self.show_leaderboard(n, content),
             "求婚": lambda n, i: self.propose_marriage(n, content, msg),
             "同意求婚": lambda n, i: self.accept_marriage(n),
@@ -397,7 +398,7 @@ class Game(Plugin):
 其他功能
 ————————————
 🏆 排行榜 [类型] - 查看排行榜
-🔄 更新用户ID [昵称] - 更新用户ID
+🔄 更新用户名 [昵称] - 更新用户名
 🔔 提醒 [内容] - 设置提醒
 🗑️ 删除提醒 - 删除提醒
 
@@ -413,12 +414,10 @@ class Game(Plugin):
 系统时间: {}
 """.format(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()))
 
-    def update_user_id(self, user_id, content):
+    def update_user_name(self, user_id, content: ChatMessage):
         """
-        根据用户昵称更新用户ID
-        
+        更新用户名
         Args:
-            user_id (str): 当前用户ID
             content (str): 完整的命令内容
         
         Returns:
@@ -428,56 +427,40 @@ class Game(Plugin):
         try:
             parts = content.split()
             if len(parts) != 2:
-                return "更新用户ID格式错误！请使用: 更新用户ID 昵称"
-            
-            target_nickname = parts[1]
+                return "更新用户名格式错误！请使用: 更新用户名 昵称"
+            # 提取用户名
+            target_user_name = parts[1]
         except Exception:
-            return "更新用户ID格式错误！请使用: 更新用户ID 昵称"
+            return "更新用户名格式错误！请使用: 更新用户名 昵称"
         
-        # 检查昵称长度
-        if len(target_nickname) < 2 or len(target_nickname) > 20:
-            return "昵称长度应在2-20个字符之间"
-        
-        # 读取所有数据
-        rows = []
-        updated = False
+        # 检查用户名长度
+        if len(target_user_name) < 2 or len(target_user_name) > 20:
+            return "用户名长度应在2-20个字符之间"
         
         try:
-            with open(self.player_file, 'r', encoding='utf-8') as f:
-                reader = csv.DictReader(f)
-                fieldnames = reader.fieldnames
-                
-                # 检查是否已存在相同的user_id
-                for row in reader:
-                    if row['user_id'] == str(user_id):
-                        return "当前用户ID已存在，无法更新"
-                    rows.append(row)
-            
-            # 重新遍历寻找目标昵称
-            target_found = False
-            for row in rows:
-                if row['nickname'] == target_nickname:
-                    if target_found:  # 如果已经找到过一次
-                        return f"发现多个使用 {target_nickname} 昵称的用户，无法自动更新"
-                    row['user_id'] = str(user_id)  # 更新user_id
-                    updated = True
-                    target_found = True
-            
-            if not target_found:
-                return f"未找到昵称为 {target_nickname} 的用户"
-            
-            # 写入更新后的数据
-            if updated:
-                with open(self.player_file, 'w', newline='', encoding='utf-8') as f:
-                    writer = csv.DictWriter(f, fieldnames=fieldnames)
-                    writer.writeheader()
-                    writer.writerows(rows)
-                
-                return f"成功将昵称为 {target_nickname} 的用户ID更新为 {user_id}"
-        
+            # 读取用户信息excel表
+            df = pd.read_csv(self.player_file)
+            # 查找对应的行  
+            row = df.loc[df['user_id'] == user_id]  
+            # 检查是否找到对应的行
+            if row.empty:  
+                return f"未找到用户{target_user_name}。"
+            else:  
+                # 获取当前的昵称
+                current_nickname = row['nickname'].values[0]  
+                # 检查昵称是否一致  
+                if current_nickname == target_user_name:  
+                    ret_text = "昵称已经一致，无需更新。"
+                else:  
+                    # 更新昵称  
+                    df.loc[df['user_id'] == user_id, 'nickname'] = target_user_name 
+                    ret_text = f"成功将用户 {current_nickname} 的用户名变更为 {target_user_name}"
+                # 保存更新后的 DataFrame 到 CSV 文件  
+                df.to_csv(self.player_file, index=False)   
+                return ret_text
         except Exception as e:
-            logger.error(f"更新用户ID出错: {e}")
-            return "更新用户ID时发生错误"
+            logger.error(f"更新用户名出错: {e}")
+            return "更新用户名时发生错误"
 
     def register_player(self, nickname, current_id):
         """注册新玩家"""
@@ -528,7 +511,7 @@ class Game(Plugin):
         """钓鱼"""
         player = self.get_player(user_id)
         if not player:
-            return "您还没注册,请先注册.如确定自己注册过，可能存在用户错误的bug。请发送更新用户ID，具体使用办法可发送游戏菜单"
+            return "您还没注册,请先注册.如确定自己注册过，可能存在用户错误的bug。请发送更新用户名，具体使用办法可发送游戏菜单"
             
         # 检查是否有鱼竿
         inventory = player.inventory
@@ -594,7 +577,7 @@ class Game(Plugin):
         """显示鱼类图鉴"""
         player = self.get_player(user_id)
         if not player:
-            return "您还没有注册,请先注册.如确定自己注册过，可能存在用户错误的bug。请发送更新用户ID，具体使用办法可发送游戏菜单"
+            return "您还没有注册,请先注册.如确定自己注册过，可能存在用户错误的bug。请发送更新用户名，具体使用办法可发送游戏菜单"
             
         # 解析命令参数
         parts = content.split()
@@ -894,7 +877,7 @@ class Game(Plugin):
         # 检查玩家是否存在
         player = self.get_player(user_id)
         if not player:
-            return "您还没注册,请先注册.如确定自己注册过，可能存在用户错误的bug。请发送更新用户ID，具体使用办法可发送游戏菜单"
+            return "您还没注册,请先注册.如确定自己注册过，可能存在用户错误的bug。请发送更新用户名，具体使用办法可发送游戏菜单"
         
         # 获取物品信息
         items = self.get_shop_items()
@@ -957,7 +940,7 @@ class Game(Plugin):
         """获取玩家状态"""
         player = self.get_player(user_id)
         if not player:
-            return "您还没注册,请先注册.如确定自己注册过，可能存在用户错误的bug。请发送更新用户ID，具体使用办法可发送游戏菜单"
+            return "您还没注册,请先注册.如确定自己注册过，可能存在用户错误的bug。请发送更新用户名，具体使用办法可发送游戏菜单"
         
         # 获取物品信息
         items_info = self.item_system.get_all_items()
@@ -970,7 +953,7 @@ class Game(Plugin):
         try:
             player = self.get_player(user_id)
             if not player:
-                return "您还没注册,请先注册.如确定自己注册过，可能存在用户错误的bug。请发送更新用户ID，具体使用办法可发送游戏菜单"
+                return "您还没注册,请先注册.如确定自己注册过，可能存在用户错误的bug。请发送更新用户名，具体使用办法可发送游戏菜单"
             
             import datetime
             today = datetime.datetime.now().strftime('%Y-%m-%d')
@@ -980,8 +963,8 @@ class Game(Plugin):
                 return "您今天已经签到过了"
             
             # 计算奖励
-            reward = 50  # 签到奖励50金币
-            exp_reward = 10  # 签到奖励10经验
+            reward = 500  # 签到奖励50金币
+            exp_reward = 50  # 签到奖励10经验
             
             # 更新数据
             updates = {
@@ -1046,7 +1029,7 @@ class Game(Plugin):
         # 检查双方是否都已注册
         sender = self.get_player(user_id)
         if not sender:
-            return "您还没注册,请先注册.如确定自己注册过，可能存在用错误的bug。请发送更新用户ID，具体使用办法可发送游戏菜单"
+            return "您还没注册,请先注册.如确定自己注册过，可能存在用错误的bug。请发送更新用户名，具体使用办法可发送游戏菜单"
         
         receiver = self.get_player(target_id)
         if not receiver:
