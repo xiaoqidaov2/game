@@ -246,7 +246,7 @@ class Player:
         data = {
             'user_id': user_id,
             'nickname': nickname,
-            'gold': '100',
+            'gold': '2000',
             'level': '1', 
             'last_checkin': '',
             'inventory': '[]',
