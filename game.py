@@ -21,7 +21,7 @@ from .monopoly import MonopolySystem
 @plugins.register(
     name="Game",
     desc="一个简单的文字游戏系统",
-    version="0.2",
+    version="0.2.1",
     author="assistant",
     desire_priority=0
 )
@@ -281,63 +281,66 @@ class Game(Plugin):
             return
             
         # 在处理任何命令前，先检查定时任务
-        self._check_scheduled_tasks()  # 添加这一行
+        self._check_scheduled_tasks()
         
         content = e_context['context'].content.strip()
         msg: ChatMessage = e_context['context']['msg']
         
-        # 使用昵称作为主要标识符
+        # 获取用户ID作为主要标识符
+        current_id = msg.actual_user_id if msg.is_group else msg.from_user_id
+        
+        # 修改这里：使用 sender 作为昵称
         nickname = msg.actual_user_nickname if msg.is_group else msg.from_user_nickname
-        if not nickname:
-            return "无法获取您的昵称，请确保昵称已设置"
+        
+        if not current_id:
+            return "无法获取您的ID，请确保ID已设置"
+            
         if not self.game_status and content not in ['注册', '开机', '关机', '定时', '查看定时', '取消定时', '清空定时']:
             return "游戏系统当前已关闭"
-        # 获取当前ID用于日志记录
-        current_id = msg.actual_user_id if msg.is_group else msg.from_user_id
-        logger.debug(f"当前用户信息 - nickname: {nickname}, current_id: {current_id}")
+            
+        logger.debug(f"当前用户信息 - current_id: {current_id}")
         
-        # 使用字典映射命令到处理函数
+        # 修改这里：更新 lambda 函数定义，使其接受两个参数
         cmd_handlers = {
-            "注册": lambda n, i: self.register_player(n, i),
-            "状态": lambda n, i: self.get_player_status(n),
-            "个人状态": lambda n, i: self.get_player_status(n),
-            "签到": lambda n, i: self.daily_checkin(n),
-            "商店": lambda n, i: self.shop.show_shop(content),
-            "购买": lambda n, i: self.shop.buy_item(n, content),
-            "背包": lambda n, i: self.show_inventory(n),
-            "装备": lambda n, i: self.equip_from_inventory(n, content),
-            "游戏菜单": lambda n, i: self.game_help(),
-            "赠送": lambda n, i: self.give_item(n, content, msg),
-            "钓鱼": lambda n, i: self.fishing(n),  
-            "图鉴": lambda n, i: self.show_fish_collection(n, content),
-            "出售": lambda n, i: self.shop.sell_item(n, content),
-            "批量出售": lambda n, i: self.shop.sell_item(n, content),
-            "外出": lambda n, i: self.go_out(n),
-            "使用": lambda n, i: self.use_item(n, content),
-            "更新用户名": lambda n, i: self.update_user_name(i, content),
-            "排行榜": lambda n, i: self.show_leaderboard(n, content),
-            "求婚": lambda n, i: self.propose_marriage(n, content, msg),
-            "同意求婚": lambda n, i: self.accept_marriage(n),
-            "拒绝求婚": lambda n, i: self.reject_marriage(n),
-            "离婚": lambda n, i: self.divorce(n),
-            "攻击": lambda n, i: self.attack_player(n, content, msg),
-            "开机": lambda n, i: self.toggle_game_system(n, 'start'),
-            "关机": lambda n, i: self.toggle_game_system(n, 'stop'),
-            "定时": lambda n, i: self.schedule_game_system(n, content),
-            "查看定时": lambda n, i: self.show_scheduled_tasks(n),
-            "取消定时": lambda n, i: self.cancel_scheduled_task(n, content),
-            "清空定时": lambda n, i: self.clear_scheduled_tasks(n),
-            "提醒": lambda n, i: self.set_reminder(n, content),
-            "删除提醒": lambda n, i: self.delete_reminder(n),
-            "购买地块": lambda n, i: self.buy_property(n),
-            "升级地块": lambda n, i: self.upgrade_property(n),
-            "我的地产": lambda n, i: self.show_properties(n),
-            "地图": lambda n, i: self.show_map(n),
+            "注册": lambda i, n: self.register_player(i, n),
+            "状态": lambda i, n: self.get_player_status(i),
+            "个人状态": lambda i, n: self.get_player_status(i),
+            "签到": lambda i, n: self.daily_checkin(i),
+            "商店": lambda i, n: self.shop.show_shop(content),
+            "购买": lambda i, n: self.shop.buy_item(i, content),
+            "背包": lambda i, n: self.show_inventory(i),
+            "装备": lambda i, n: self.equip_from_inventory(i, content),
+            "游戏菜单": lambda i, n: self.game_help(),
+            "赠送": lambda i, n: self.give_item(i, content, msg),
+            "钓鱼": lambda i, n: self.fishing(i),  
+            "图鉴": lambda i, n: self.show_fish_collection(i, content),
+            "出售": lambda i, n: self.shop.sell_item(i, content),
+            "批量出售": lambda i, n: self.shop.sell_item(i, content),
+            "外出": lambda i, n: self.go_out(i),
+            "使用": lambda i, n: self.use_item(i, content),
+            "排行榜": lambda i, n: self.show_leaderboard(i, content),
+            "求婚": lambda i, n: self.propose_marriage(i, content, msg),
+            "同意求婚": lambda i, n: self.accept_marriage(i),
+            "拒绝求婚": lambda i, n: self.reject_marriage(i),
+            "离婚": lambda i, n: self.divorce(i),
+            "攻击": lambda i, n: self.attack_player(i, content, msg),
+            "开机": lambda i, n: self.toggle_game_system(i, 'start'),
+            "关机": lambda i, n: self.toggle_game_system(i, 'stop'),
+            "定时": lambda i, n: self.schedule_game_system(i, content),
+            "查看定时": lambda i, n: self.show_scheduled_tasks(i),
+            "取消定时": lambda i, n: self.cancel_scheduled_task(i, content),
+            "清空定时": lambda i, n: self.clear_scheduled_tasks(i),
+            "提醒": lambda i, n: self.set_reminder(i, content),
+            "删除提醒": lambda i, n: self.delete_reminder(i),
+            "购买地块": lambda i, n: self.buy_property(i),
+            "升级地块": lambda i, n: self.upgrade_property(i),
+            "我的地产": lambda i, n: self.show_properties(i),
+            "地图": lambda i, n: self.show_map(i),
         }
         
         cmd = content.split()[0]
         if cmd in cmd_handlers:
-            reply = cmd_handlers[cmd](nickname, current_id)
+            reply = cmd_handlers[cmd](current_id, nickname)
             # 添加活动提醒
             reminders = self.get_active_reminders()
             if reminders:
@@ -397,7 +400,6 @@ class Game(Plugin):
 其他功能
 ————————————
 🏆 排行榜 [类型] - 查看排行榜
-🔄 更新用户名 [昵称] - 更新用户名
 🔔 提醒 [内容] - 设置提醒
 🗑️ 删除提醒 - 删除提醒
 
@@ -413,85 +415,41 @@ class Game(Plugin):
 系统时间: {}
 """.format(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()))
 
-    def update_user_name(self, user_id, content: ChatMessage):
-        """
-        更新用户名
-        Args:
-            content (str): 完整的命令内容
-        
-        Returns:
-            str: 更新结果提示
-        """
-        # 检查命令格式
-        try:
-            parts = content.split()
-            if len(parts) != 2:
-                return "更新用户名格式错误！请使用: 更新用户名 昵称"
-            # 提取用户名
-            target_user_name = parts[1]
-        except Exception:
-            return "更新用户名格式错误！请使用: 更新用户名 昵称"
-        
-        # 检查用户名长度
-        if len(target_user_name) < 2 or len(target_user_name) > 20:
-            return "用户名长度应在2-20个字符之间"
-        
-        try:
-            # 读取用户信息excel表
-            df = pd.read_csv(self.player_file)
-            # 查找对应的行  
-            row = df.loc[df['user_id'] == user_id]  
-            # 检查是否找到对应的行
-            if row.empty:  
-                return f"未找到用户{target_user_name}。"
-            else:  
-                # 获取当前的昵称
-                current_nickname = row['nickname'].values[0]  
-                # 检查昵称是否一致  
-                if current_nickname == target_user_name:  
-                    ret_text = "昵称已经一致，无需更新。"
-                else:  
-                    # 更新昵称  
-                    df.loc[df['user_id'] == user_id, 'nickname'] = target_user_name 
-                    ret_text = f"成功将用户 {current_nickname} 的用户名变更为 {target_user_name}"
-                # 保存更新后的 DataFrame 到 CSV 文件  
-                df.to_csv(self.player_file, index=False)   
-                return ret_text
-        except Exception as e:
-            logger.error(f"更新用户名出错: {e}")
-            return "更新用户名时发生错误"
 
-    def register_player(self, nickname, current_id):
-        """注册新玩家"""
-        if not nickname or not current_id:
-            return "无法获取您的昵称或ID，请确保昵称和ID已设置"
+
+    def register_player(self, user_id, nickname=None):
+        """注册新玩家
         
-        # 检查昵称长度
-        if len(nickname) < 2 or len(nickname) > 20:
-            return "昵称长度应在2-20个字符之间"
+        Args:
+            user_id: 玩家ID
+            nickname: 玩家昵称，如果未提供则使用user_id
+        """
+        if not user_id:
+            return "无法获取您的ID，请确保ID已设置"
         
         # 检查是否已注册
-        if self.get_player(nickname) or self.get_player(current_id):
+        if self.get_player(user_id):
             return "您已经注册过了"
         
         try:
+            # 如果没有提供昵称，使用user_id作为默认昵称
+            if not nickname:
+                nickname = str(user_id)
+            
             # 创建新玩家
-            player = Player.create_new(current_id, nickname)
+            player = Player.create_new(user_id, nickname)
             player.player_file = self.player_file
             player.standard_fields = self.STANDARD_FIELDS
             
-            # 验证数据
-            if not player.validate_data():
-                raise ValueError("玩家数据验证失败")
-                
-            # 保存数据
-            player.save_player_data(self.player_file, self.STANDARD_FIELDS)
+            # 保存玩家数据
+            with open(self.player_file, 'a', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=self.STANDARD_FIELDS)
+                writer.writerow(player.to_dict())
             
-            return f"注册成功! 欢迎 {nickname}"
-            
+            return f"注册成功！"
         except Exception as e:
             logger.error(f"注册玩家出错: {e}")
-            return f"注册失败: {str(e)}"
+            return "注册失败，请稍后再试"
 
     def get_player(self, user_id) -> Optional[Player]:
         """获取玩家数据"""
@@ -510,7 +468,7 @@ class Game(Plugin):
         """钓鱼"""
         player = self.get_player(user_id)
         if not player:
-            return "您还没注册,请先注册.如确定自己注册过，可能存在用户错误的bug。请发送更新用户名，具体使用办法可发送游戏菜单"
+            return "您还没注册,请先注册"
             
         # 检查是否有鱼竿
         inventory = player.inventory
@@ -576,7 +534,7 @@ class Game(Plugin):
         """显示鱼类图鉴"""
         player = self.get_player(user_id)
         if not player:
-            return "您还没有注册,请先注册.如确定自己注册过，可能存在用户错误的bug。请发送更新用户名，具体使用办法可发送游戏菜单"
+            return "您还没有注册,请先注册 "
             
         # 解析命令参数
         parts = content.split()
@@ -632,7 +590,7 @@ class Game(Plugin):
             f"来到了 {block['name']}"
         ]
         
-        # 根据地块类型处理不同情况
+        # ��据��块类型处理不同情况
         if block['type'] == '起点':
             bonus = 200
             new_gold = int(player.gold) + bonus
@@ -670,20 +628,27 @@ class Game(Plugin):
                 result.append("发送'购买地块'即可购买")
             else:
                 # 需要付租金
-                if owner != user_id:
-                    rent = self.monopoly.calculate_rent(new_position)
-                    if int(player.gold) >= rent:
-                        new_gold = int(player.gold) - rent
-                        owner_player = self.get_player(owner)
-                        if owner_player:
+                if owner != user_id:  # 不是自己的地产才需要付租金
+                    owner_player = self.get_player(owner)
+                    if owner_player:
+                        rent = self.monopoly.calculate_rent(new_position)
+                        if int(player.gold) >= rent:
+                            # 扣除玩家金币
+                            new_player_gold = int(player.gold) - rent
+                            self._update_player_data(user_id, {'gold': str(new_player_gold)})
+                            
+                            # 增加房主金币
                             owner_new_gold = int(owner_player.gold) + rent
                             self._update_player_data(owner, {'gold': str(owner_new_gold)})
-                        self._update_player_data(user_id, {'gold': str(new_gold)})
-                        result.append(f"这是 {owner_player.nickname if owner_player else owner} 的地盘")
-                        result.append(f"区域类型: {block['region']}")
-                        result.append(f"支付租金 {rent} 金币")
+                            
+                            result.append(f"这是 {owner_player.nickname} 的地盘")
+                            result.append(f"区域类型: {block['region']}")
+                            result.append(f"支付租金 {rent} 金币")
+                            result.append(f"当前金币: {new_player_gold}")
+                        else:
+                            result.append(f"你的金币不足以支付 {rent} 金币的租金！")
                     else:
-                        result.append("你的金币不足以支付租金！")
+                        result.append("地产所有者信息异常")
                 else:
                     result.append("这是你的地盘")
                     result.append(f"区域类型: {block['region']}")
@@ -724,16 +689,39 @@ class Game(Plugin):
         """战斗系统"""
         player = self.get_player(user_id)
         
-        player_hp = int(player.hp)
-        player_attack = int(player.attack)
-        player_defense = int(player.defense)
+        # 获取玩家基础属性
+        player_base_hp = int(player.hp)
+        player_base_attack = int(player.attack)
+        player_base_defense = int(player.defense)
+        
+        # 获取装备加成
+        weapon_bonus = self.equipment_system.get_weapon_bonus(player)
+        armor_reduction = self.equipment_system.get_armor_reduction(player)
+        
+        # 获取护甲提供的生命值加成
+        hp_bonus = 0
+        if player.equipped_armor:
+            items_info = self.item_system.get_all_items()
+            if player.equipped_armor in items_info:
+                armor_info = items_info[player.equipped_armor]
+                hp_bonus = int(armor_info.get('hp', 0))
+        
+        # 计算总属性
+        player_total_hp = player_base_hp + hp_bonus
+        player_total_attack = player_base_attack + weapon_bonus
+        player_total_defense = player_base_defense + int(armor_reduction * player_base_defense)
         
         monster_hp = monster['hp']
         monster_max_hp = monster['hp']
-        monster_defense = monster['defense']  # 获取怪物防御值
+        monster_defense = monster['defense']
         
         battle_log = [f"⚔️ 遭遇了 {monster['name']}"]
-        battle_log.append(f"怪物属性:")
+        battle_log.append(f"\n你的属性:")
+        battle_log.append(f"❤️ 生命值: {player_total_hp} (基础{player_base_hp} / 装备{hp_bonus})")
+        battle_log.append(f"⚔️ 攻击力: {player_total_attack} (基础{player_base_attack} / 装备{weapon_bonus})")
+        battle_log.append(f"🛡️ 防御力: {player_total_defense} (基础{player_base_defense} / 装备{int(armor_reduction * player_base_defense)})")
+        
+        battle_log.append(f"\n怪物属性:")
         battle_log.append(f"❤️ 生命值: {monster['hp']}")
         battle_log.append(f"⚔️ 攻击力: {monster['attack']}")
         battle_log.append(f"🛡️ 防御力: {monster['defense']}")
@@ -743,18 +731,19 @@ class Game(Plugin):
         
         round_num = 1
         important_events = []
+        
+        # 使用总生命值进行战斗
+        player_hp = player_total_hp
+        
         while player_hp > 0 and monster_hp > 0:
             # 玩家攻击
-            damage = max(1, player_attack - monster_defense)  # 使用monster_defense
-            weapon_bonus = self.equipment_system.get_weapon_bonus(player)
-            armor_reduction = self.equipment_system.get_armor_reduction(monster)
-            final_damage = max(1, (damage + weapon_bonus) * (1 - armor_reduction))
-            damage = int(final_damage * random.uniform(0.8, 1.2))
-            monster_hp -= damage
+            damage = max(1, player_total_attack - monster_defense)
+            final_damage = int(damage * random.uniform(0.8, 1.2))
+            monster_hp -= final_damage
             
             if round_num <= 5:
                 battle_log.append(f"\n第{round_num}回合")
-                battle_log.append(f"你对{monster['name']}造成 {damage} 点伤害")
+                battle_log.append(f"你对{monster['name']}造成 {final_damage} 点伤害")
             
             # 检查怪物是否进入狂暴状态
             if not is_berserk and monster_hp < monster_max_hp * 0.3 and random.random() < 0.4:
@@ -768,7 +757,7 @@ class Game(Plugin):
             # 怪物反击
             if monster_hp > 0:
                 damage_multiplier = random.uniform(0.8, 1.2)
-                base_damage = max(1, monster['attack'] - player_defense)
+                base_damage = max(1, monster['attack'] - player_total_defense)
                 monster_damage = int(base_damage * damage_multiplier)
                 player_hp -= monster_damage
                 
@@ -876,7 +865,7 @@ class Game(Plugin):
         # 检查玩家是否存在
         player = self.get_player(user_id)
         if not player:
-            return "您还没注册,请先注册.如确定自己注册过，可能存在用户错误的bug。请发送更新用户名，具体使用办法可发送游戏菜单"
+            return "您还没注册,请先注册 "
         
         # 获取物品信息
         items = self.get_shop_items()
@@ -939,7 +928,7 @@ class Game(Plugin):
         """获取玩家状态"""
         player = self.get_player(user_id)
         if not player:
-            return "您还没注册,请先注册.如确定自己注册过，可能存在用户错误的bug。请发送更新用户名，具体使用办法可发送游戏菜单"
+            return "您还没注册,请先注册 "
         
         # 获取物品信息
         items_info = self.item_system.get_all_items()
@@ -950,20 +939,25 @@ class Game(Plugin):
     def daily_checkin(self, user_id):
         """每日签到"""
         try:
+            logger.info(f"用户 {user_id} 尝试进行每日签到")
             player = self.get_player(user_id)
             if not player:
-                return "您还没注册,请先注册.如确定自己注册过，可能存在用户错误的bug。请发送更新用户名，具体使用办法可发送游戏菜单"
+                logger.warning(f"用户 {user_id} 未注册，无法签到")
+                return "您还没注册,请先注册 "
             
             import datetime
             today = datetime.datetime.now().strftime('%Y-%m-%d')
+            logger.info(f"当前日期: {today}")
             
             # 检查签到状态
             if player.last_checkin == today:
+                logger.info(f"用户 {user_id} 今天已经签到过了")
                 return "您今天已经签到过了"
             
             # 计算奖励
             reward = 500  # 签到奖励50金币
             exp_reward = 50  # 签到奖励10经验
+            logger.info(f"用户 {user_id} 签到奖励: {reward}金币, {exp_reward}经验")
             
             # 更新数据
             updates = {
@@ -973,11 +967,12 @@ class Game(Plugin):
             }
             
             self._update_player_data(user_id, updates)
+            logger.info(f"用户 {user_id} 数据更新成功: {updates}")
             
             return f"签到成功 获得{reward}金币，经验{exp_reward}，当前金币: {player.gold + reward}"
             
         except Exception as e:
-            logger.error(f"签到出错: {e}")
+            logger.error(f"用户 {user_id} 签到出错: {e}")
             return f"签到失败: {str(e)}"
 
     def get_shop_items(self) -> dict:
@@ -1028,7 +1023,7 @@ class Game(Plugin):
         # 检查双方是否都已注册
         sender = self.get_player(user_id)
         if not sender:
-            return "您还没注册,请先注册.如确定自己注册过，可能存在用错误的bug。请发送更新用户名，具体使用办法可发送游戏菜单"
+            return "您还没注册,请先注册"
         
         receiver = self.get_player(target_id)
         if not receiver:
@@ -1164,10 +1159,10 @@ class Game(Plugin):
             return "请使用正确的格式：求婚 @用户名"
         
         target_name = parts[1][1:]  # 去掉@符号
-        target = self.get_player(target_name)
-        
+        # 根据昵称获取玩家
+        target = Player.get_player_by_nickname(target_name, self.player_file)
         if not target:
-            return "对方还没有注册游戏"
+            return "找不到目标玩家，请确保输入了正确的用户名"
             
         if target.nickname == proposer.nickname:
             return "不能向自己求婚"
@@ -1287,16 +1282,15 @@ class Game(Plugin):
             return "请使用正确的格式：攻击 @用户名"
         
         target_name = parts[1][1:]  # 去掉@符号
-        
+        # 根据昵称获取玩家
+        target = Player.get_player_by_nickname(target_name, self.player_file)
+        if not target:
+            return "找不到目标玩家，请确保输入了正确的用户名"
+            
         # 获取攻击者信息
         attacker = self.get_player(user_id)
         if not attacker:
             return "您还没有注册游戏"
-        
-        # 获取目标玩家信息
-        target = self.get_player(target_name)
-        if not target:
-            return "目标玩家还没有注册游戏"
         
         # 不能攻击自己
         if attacker.nickname == target.nickname:
@@ -1338,25 +1332,53 @@ class Game(Plugin):
                     if spouse:
                         target_spouses.append(spouse)
         
-        # 战斗日志
+        # 获取装备加成
+        attacker_weapon_bonus = self.equipment_system.get_weapon_bonus(attacker)
+        attacker_armor_bonus = self.equipment_system.get_armor_reduction(attacker)
+        target_weapon_bonus = self.equipment_system.get_weapon_bonus(target)
+        target_armor_bonus = self.equipment_system.get_armor_reduction(target)
+        
+        # 获取护甲提供的生命值加成
+        attacker_hp_bonus = 0
+        target_hp_bonus = 0
+        
+        # 计算攻击者护甲生命值加成
+        if attacker.equipped_armor and attacker.equipped_armor in items_info:
+            armor_info = items_info[attacker.equipped_armor]
+            attacker_hp_bonus = int(armor_info.get('hp', 0))
+        
+        # 计算目标护甲生命值加成
+        if target.equipped_armor and target.equipped_armor in items_info:
+            target_armor_info = items_info[target.equipped_armor]
+            target_hp_bonus = int(target_armor_info.get('hp', 0))
+        
+        # 计算实际生命值
+        attacker_total_hp = attacker_hp + attacker_hp_bonus
+        target_total_hp = target_hp + target_hp_bonus
+        
+        # 更新战斗日志显示
         battle_log = [
             "⚔️ PVP战斗开始 ⚔️\n",
             f"[{attacker.nickname}]",
-            f"❤️生命: {attacker_hp}",
-            f"⚔️攻击: {attacker_attack}",
-            f"🛡️防御: {attacker_defense}\n",
+            f"❤️ 生命: {attacker_total_hp} (基础{attacker_hp} / 装备{attacker_hp_bonus})",
+            f"⚔️ 攻击力: {attacker_total_attack} (基础{base_attack} / 装备{weapon_bonus})",
+            f"🛡️ 防御力: {attacker_total_defense} (基础{base_defense} / 装备{armor_bonus})\n",
             f"VS\n",
             f"[{target.nickname}]",
-            f"❤️生命: {target_hp}",
-            f"⚔️攻击: {target_attack}",
-            f"🛡️防御: {target_defense}\n"
+            f"❤️ 生命: {target_total_hp} (基础{target_hp} / 装备{target_hp_bonus})",
+            f"⚔️ 攻击力: {target_total_attack} (基础{target_attack} / 装备{target_weapon_bonus})",
+            f"🛡️ 防御力: {target_total_defense} (基础{target_defense} / 装备{target_armor_bonus})\n"
         ]
+        
+        # 战斗逻辑中使用总生命值
+        attacker_hp = attacker_total_hp
+        target_hp = target_total_hp
         
         # 战斗逻辑
         round_num = 1
         while attacker_hp > 0 and target_hp > 0:
             # 攻击者回合
-            damage = max(1, attacker_attack - target_defense)
+            damage = max(1, attacker_total_attack - target_total_defense)
             weapon_bonus = self.equipment_system.get_weapon_bonus(attacker)
             armor_reduction = self.equipment_system.get_armor_reduction(target)
             final_damage = max(1, (damage + weapon_bonus) * (1 - armor_reduction))
@@ -1371,7 +1393,7 @@ class Game(Plugin):
             for spouse in attacker_spouses:
                 if random.random() < 0.3:
                     spouse_attack = int(spouse.attack)
-                    spouse_damage = max(1, spouse_attack - target_defense)
+                    spouse_damage = max(1, spouse_attack - target_total_defense)
                     spouse_damage = int(spouse_damage * random.uniform(0.4, 0.6))
                     damage += spouse_damage
                     battle_log.append(f"回合 {round_num}: {spouse.nickname} 协助攻击,额外造成 {spouse_damage} 点伤害")
@@ -1381,14 +1403,14 @@ class Game(Plugin):
             
             # 目标反击
             if target_hp > 0:
-                damage = max(1, target_attack - attacker_defense)
+                damage = max(1, target_total_attack - attacker_total_defense)
                 damage = int(damage * random.uniform(0.8, 1.2))
                 
                 # 目标配偶协助(每个配偶30%概率)
                 for spouse in target_spouses:
                     if random.random() < 0.3:
                         spouse_attack = int(spouse.attack)
-                        spouse_damage = max(1, spouse_attack - attacker_defense)
+                        spouse_damage = max(1, spouse_attack - attacker_total_defense)
                         spouse_damage = int(spouse_damage * random.uniform(0.4, 0.6))
                         damage += spouse_damage
                         battle_log.append(f"回合 {round_num}: {spouse.nickname} 协助防御,额外造成 {spouse_damage} 点伤害")
@@ -1425,9 +1447,10 @@ class Game(Plugin):
                 'inventory': attacker_items,  # _update_player_data会处理列表到JSON的转换
                 'last_attack': str(current_time)
             })
-            self._update_player_data(target.nickname, {
+            self._update_player_data(target.user_id, {  # 这里改为使用user_id
                 'hp': str(target_hp),
-                'gold': str(new_target_gold)
+                'gold': str(new_target_gold),
+                'inventory': target.inventory,  # _update_player_data会处理列表到JSON的转换
             })
             
             result = f"{target.nickname} 获胜!\n{attacker.nickname} 赔偿 {penalty_gold} 金币"
@@ -1449,7 +1472,7 @@ class Game(Plugin):
                 target_items.remove(lost_item)
             
             # 更新数据
-            self._update_player_data(target.nickname, {
+            self._update_player_data(target.user_id, {  # 使用target_id而不是nickname
                 'hp': str(target_hp),
                 'gold': str(new_target_gold),
                 'inventory': target_items,  # _update_player_data会处理列表到JSON的转换
@@ -1471,11 +1494,12 @@ class Game(Plugin):
         """更新玩家数据
         
         Args:
-            user_id: 玩家ID或昵称
+            user_id: 玩家ID
             updates: 需要更新的字段和值的字典
         """
         try:
-            player = self.get_player(user_id)
+            # 确保使用user_id查找玩家
+            player = self.get_player(str(user_id))
             if not player:
                 logger.error(f"找不到玩家: {user_id}")
                 raise ValueError(f"找不到玩家: {user_id}")
@@ -1497,11 +1521,6 @@ class Game(Plugin):
         except Exception as e:
             logger.error(f"更新玩家数据出错: {e}")
             raise
-
-
-
-
-
 
     def show_inventory(self, user_id):
         player = self.get_player(user_id)
@@ -2007,7 +2026,7 @@ class Game(Plugin):
                     "地级市": "🏣",
                     "县城": "🏘️",
                     "乡村": "🏡",
-                    "空地": "⬜"
+                    "空地": "���"
                 }
                 symbol = type_symbols.get(block['type'], "⬜")
                 

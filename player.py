@@ -220,7 +220,7 @@ class Player:
             with open(self.player_file, 'r', encoding='utf-8', newline='') as f:
                 reader = csv.DictReader(f)
                 for row in reader:
-                    if row['user_id'] != self.user_id and row['nickname'] != self.nickname:
+                    if row['user_id'] != self.user_id:
                         players_data.append(row)
             
             # 添加更新后的玩家数据
@@ -371,7 +371,7 @@ class Player:
         """从文件中获取玩家数据
         
         Args:
-            user_id: 用户ID或昵称
+            user_id: 用户ID
             player_file: 玩家数据文件路径
             
         Returns:
@@ -381,8 +381,13 @@ class Player:
             with open(player_file, 'r', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
                 for row in reader:
-                    if row['user_id'] == str(user_id) or row['nickname'] == user_id:
+                    if row['user_id'] == str(user_id):
+                        logger.info(f"找到用户ID为 {user_id} 的玩家数据")
                         return cls(row)
+            logger.warning(f"未找到用户ID为 {user_id} 的玩家数据")
+            return None
+        except FileNotFoundError:
+            logger.error(f"玩家数据文件 {player_file} 未找到")
             return None
         except Exception as e:
             logger.error(f"获取玩家数据出错: {e}")
@@ -401,7 +406,7 @@ class Player:
             with open(player_file, 'r', encoding='utf-8', newline='') as f:
                 reader = csv.DictReader(f)
                 for row in reader:
-                    if row['user_id'] != self.user_id and row['nickname'] != self.nickname:
+                    if row['user_id'] != self.user_id:
                         players_data.append(row)
             
             # 添加更新后的玩家数据
@@ -600,3 +605,30 @@ class Player:
             status.append(f"🎣 装备鱼竿: {equipped_fishing_rod} [耐久度:{rod_durability}%]")
         
         return "\n".join(status)
+
+    @classmethod
+    def get_player_by_nickname(cls, nickname: str, player_file: str) -> Optional['Player']:
+        """根据昵称查找玩家
+        
+        Args:
+            nickname: 玩家昵称
+            player_file: 玩家数据文件路径
+            
+        Returns:
+            Optional[Player]: 玩家实例,如果未找到则返回 None
+        """
+        try:
+            with open(player_file, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    if row['nickname'] == nickname:
+                        logger.info(f"找到昵称为 {nickname} 的玩家数据")
+                        return cls(row)
+            logger.warning(f"未找到昵称为 {nickname} 的玩家数据")
+            return None
+        except FileNotFoundError:
+            logger.error(f"玩家数据文件 {player_file} 未找到")
+            return None
+        except Exception as e:
+            logger.error(f"根据昵称获取玩家数据出错: {e}")
+            return None
