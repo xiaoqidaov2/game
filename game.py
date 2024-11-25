@@ -1,7 +1,6 @@
 import os
 import csv
 import random
-import pandas as pd  
 from plugins import *
 from common.log import logger
 from bridge.context import ContextType, Context
