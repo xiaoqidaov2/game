@@ -1,8 +1,2 @@
 __pycache__/
-data/config.json
-data/events_config.json
-data/game_process.lock
-data/map_config.json
-data/players.csv
-data/properties.json
-data/shop_items.csv
+data/*
