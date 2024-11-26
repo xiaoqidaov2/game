@@ -580,7 +580,13 @@ class Player:
             marriage_status = "单身"
             
         if self.marriage_proposal:
-            marriage_status += f"\n💝 收到来自 {self.marriage_proposal} 的求婚"
+            # 获取求婚者的昵称
+            proposer = self.get_player(self.marriage_proposal, self.player_file)
+            if proposer:
+                proposer_name = proposer.nickname
+            else:
+                proposer_name = f"@{self.marriage_proposal}"
+            marriage_status += f"\n💝 收到来自 {proposer_name} 的求婚"
         
         # 构建状态信息
         status = [

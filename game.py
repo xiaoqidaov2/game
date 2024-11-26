@@ -190,7 +190,7 @@ class Game(Plugin):
                     writer = csv.DictWriter(f, fieldnames=standard_player_fields)
                     writer.writeheader()
                     for player_data in all_players.values():
-                        # 确保所有必要字段都存在
+                        # 确保所有��要字段都存在
                         for field in standard_player_fields:
                             if field not in player_data:
                                 player_data[field] = default_values.get(field, '')
@@ -586,11 +586,11 @@ class Game(Plugin):
         })
         
         result = [
-            f"🎲 掷出了 {steps} 点",
+            f"🎲 owner {steps} 点",
             f"来到了 {block['name']}"
         ]
         
-        # ��据��块类型处理不同情况
+      
         if block['type'] == '起点':
             bonus = 200
             new_gold = int(player.gold) + bonus
@@ -618,17 +618,20 @@ class Game(Plugin):
             result.append(event['description'])
             
         elif block['type'] in ['空地', '直辖市', '省会', '地级市', '县城', '乡村']:
-            owner = self.monopoly.get_property_owner(new_position)
-            if owner is None:
+            property_info = self.monopoly.get_property_owner(new_position)
+            if property_info is None or 'owner' not in property_info:
                 # 可以购买
                 price = self.monopoly.calculate_property_price(new_position)
                 result.append(f"这块地还没有主人")
                 result.append(f"区域类型: {block['region']}")
                 result.append(f"需要 {price} 金币购买")
                 result.append("发送'购买地块'即可购买")
+                print(f"[DEBUG] 玩家 {user_id} 访问了未拥有的地块，位置: {new_position}, 价格: {price}")
             else:
                 # 需要付租金
-                if owner != user_id:  # 不是自己的地产才需要付租金
+                owner = property_info['owner']
+
+                if user_id != owner:  # 不是自己的地产才需要付租金
                     owner_player = self.get_player(owner)
                     if owner_player:
                         rent = self.monopoly.calculate_rent(new_position)
@@ -645,15 +648,19 @@ class Game(Plugin):
                             result.append(f"区域类型: {block['region']}")
                             result.append(f"支付租金 {rent} 金币")
                             result.append(f"当前金币: {new_player_gold}")
+                            print(f"[INFO] 玩家 {user_id} 支付了 {rent} 金币租金给 {owner_player.nickname}，剩余金币: {new_player_gold}")
                         else:
                             result.append(f"你的金币不足以支付 {rent} 金币的租金！")
+                            print(f"[WARNING] 玩家 {user_id} 的金币不足以支付租金，当前金币: {player.gold}, 需要租金: {rent}")
                     else:
-                        result.append("地产所有者信息异常")
+                        result.append("地产所有者信息异常，请联系管理员")
+                        print(f"[ERROR] 无法获取地产所有者 {owner} 的信息，位置: {new_position}")
                 else:
                     result.append("这是你的地盘")
                     result.append(f"区域类型: {block['region']}")
-                    if self.monopoly.properties_data[str(new_position)]["level"] < 3:
+                    if property_info.get('level', 0) < 3:
                         result.append("可以发送'升级地块'进行升级")
+                    print(f"[INFO] 玩家 {user_id} 访问了自己的地盘，位置: {new_position}")
         
         return "\n".join(result)
 
@@ -1155,29 +1162,30 @@ class Game(Plugin):
         
         # 解析命令参数
         parts = content.split()
+        logger.info(f"求婚命令参数: {parts}")
         if len(parts) < 2 or not parts[1].startswith('@'):
             return "请使用正确的格式：求婚 @用户名"
-        
+      
         target_name = parts[1][1:]  # 去掉@符号
         # 根据昵称获取玩家
         target = Player.get_player_by_nickname(target_name, self.player_file)
         if not target:
             return "找不到目标玩家，请确保输入了正确的用户名"
-            
-        if target.nickname == proposer.nickname:
+        
+        if target.user_id == user_id:  # 使用user_id比较
             return "不能向自己求婚"
         
         # 检查是否已经是配偶
         proposer_spouses = proposer.spouse.split(',') if proposer.spouse else []
-        if target.nickname in [s for s in proposer_spouses if s]:
+        if target.user_id in [s for s in proposer_spouses if s]:
             return "你们已经是夫妻了"
         
         if target.marriage_proposal:
             return "对方已经有一个待处理的求婚请求"
         
-        # 更新目标玩家的求婚请求，使用求婚者的昵称
-        self._update_player_data(target.nickname, {
-            'marriage_proposal': proposer.nickname
+        # 更新目标玩家的求婚请求，使用求婚者的user_id
+        self._update_player_data(target.user_id, {  # 修改：使用target.user_id而不是target.nickname
+            'marriage_proposal': user_id  # 存储求婚者的user_id
         })
         
         return f"您向 {target_name} 发起了求婚请求，等待对方回应"
@@ -1213,12 +1221,12 @@ class Game(Plugin):
         current_spouses.append(proposer.nickname)
         proposer_spouses.append(player.nickname)
         
-        # 更新双方的婚姻状态
-        self._update_player_data(player.nickname, {
+        # 更新双方的婚姻状态，使用user_id而不是nickname
+        self._update_player_data(user_id, {
             'spouse': ','.join(current_spouses),
             'marriage_proposal': ''
         })
-        self._update_player_data(proposer.nickname, {
+        self._update_player_data(proposer.user_id, {
             'spouse': ','.join(proposer_spouses)
         })
         
@@ -1356,18 +1364,24 @@ class Game(Plugin):
         attacker_total_hp = attacker_hp + attacker_hp_bonus
         target_total_hp = target_hp + target_hp_bonus
         
+        # 计算总攻击力和防御力
+        attacker_total_attack = attacker_attack + attacker_weapon_bonus
+        attacker_total_defense = attacker_defense + int(attacker_armor_bonus * attacker_defense)
+        target_total_attack = target_attack + target_weapon_bonus
+        target_total_defense = target_defense + int(target_armor_bonus * target_defense)
+        
         # 更新战斗日志显示
         battle_log = [
             "⚔️ PVP战斗开始 ⚔️\n",
             f"[{attacker.nickname}]",
             f"❤️ 生命: {attacker_total_hp} (基础{attacker_hp} / 装备{attacker_hp_bonus})",
-            f"⚔️ 攻击力: {attacker_total_attack} (基础{base_attack} / 装备{weapon_bonus})",
-            f"🛡️ 防御力: {attacker_total_defense} (基础{base_defense} / 装备{armor_bonus})\n",
+            f"⚔️ 攻击力: {attacker_total_attack} (基础{attacker_attack} / 装备{attacker_weapon_bonus})",
+            f"🛡️ 防御力: {attacker_total_defense} (基础{attacker_defense} / 装备{int(attacker_armor_bonus * attacker_defense)})\n",
             f"VS\n",
             f"[{target.nickname}]",
             f"❤️ 生命: {target_total_hp} (基础{target_hp} / 装备{target_hp_bonus})",
             f"⚔️ 攻击力: {target_total_attack} (基础{target_attack} / 装备{target_weapon_bonus})",
-            f"🛡️ 防御力: {target_total_defense} (基础{target_defense} / 装备{target_armor_bonus})\n"
+            f"🛡️ 防御力: {target_total_defense} (基础{target_defense} / 装备{int(target_armor_bonus * target_defense)})\n"
         ]
         
         # 战斗逻辑中使用总生命值
@@ -1378,45 +1392,22 @@ class Game(Plugin):
         round_num = 1
         while attacker_hp > 0 and target_hp > 0:
             # 攻击者回合
-            damage = max(1, attacker_total_attack - target_total_defense)
-            weapon_bonus = self.equipment_system.get_weapon_bonus(attacker)
-            armor_reduction = self.equipment_system.get_armor_reduction(target)
-            final_damage = max(1, (damage + weapon_bonus) * (1 - armor_reduction))
-            damage = int(final_damage * random.uniform(0.8, 1.2))
-            target_hp -= damage  # 修改这里：从 monster_hp 改为 target_hp
+            base_damage = max(1, attacker_total_attack - target_total_defense)  # 已经包含了装备加成
+            damage = int(base_damage * random.uniform(0.8, 1.2))  # 只添加随机波动
+            target_hp -= damage
             
             if round_num <= 5:
                 battle_log.append(f"\n第{round_num}回合")
                 battle_log.append(f"{attacker.nickname}对{target.nickname}造成 {damage} 点伤害")
             
-            # 攻击者配偶协助(每个配偶30%概率)
-            for spouse in attacker_spouses:
-                if random.random() < 0.3:
-                    spouse_attack = int(spouse.attack)
-                    spouse_damage = max(1, spouse_attack - target_total_defense)
-                    spouse_damage = int(spouse_damage * random.uniform(0.4, 0.6))
-                    damage += spouse_damage
-                    battle_log.append(f"回合 {round_num}: {spouse.nickname} 协助攻击,额外造成 {spouse_damage} 点伤害")
-                
-            target_hp -= damage
-            battle_log.append(f"回合 {round_num}: {attacker.nickname} 对 {target.nickname} 造成 {damage} 点伤害")
-            
             # 目标反击
             if target_hp > 0:
-                damage = max(1, target_total_attack - attacker_total_defense)
-                damage = int(damage * random.uniform(0.8, 1.2))
-                
-                # 目标配偶协助(每个配偶30%概率)
-                for spouse in target_spouses:
-                    if random.random() < 0.3:
-                        spouse_attack = int(spouse.attack)
-                        spouse_damage = max(1, spouse_attack - attacker_total_defense)
-                        spouse_damage = int(spouse_damage * random.uniform(0.4, 0.6))
-                        damage += spouse_damage
-                        battle_log.append(f"回合 {round_num}: {spouse.nickname} 协助防御,额外造成 {spouse_damage} 点伤害")
-                    
+                base_damage = max(1, target_total_attack - attacker_total_defense)  # 已经包含了装备加成
+                damage = int(base_damage * random.uniform(0.8, 1.2))  # 只添加随机波动
                 attacker_hp -= damage
-                battle_log.append(f"回合 {round_num}: {target.nickname} 对 {attacker.nickname} 造成 {damage} 点伤害")
+                
+                if round_num <= 5:
+                    battle_log.append(f"{target.nickname}对{attacker.nickname}造成 {damage} 点伤害")
             
             round_num += 1
             if round_num > 10:  # 限制最大回合数
@@ -1778,7 +1769,7 @@ class Game(Plugin):
                 
             action = '开机' if parts[1] == '开机' else '关机' if parts[1] == '关机' else None
             if not action:
-                return "请指定正确的操作(开机/关机)"
+                return "请指定正确的操作(开机/���机)"
                 
             # 解析时间
             try:
@@ -1819,7 +1810,7 @@ class Game(Plugin):
                     # 执行定时任务
                     if task['action'] == 'start':
                         self.game_status = True
-                        logger.info(f"定时任务执行：开机 - {datetime.datetime.fromtimestamp(task['time']).strftime('%Y-%m-%d %H:%M')}")
+                        logger.info(f"定时任务执行：开��� - {datetime.datetime.fromtimestamp(task['time']).strftime('%Y-%m-%d %H:%M')}")
                     elif task['action'] == 'stop':
                         self.game_status = False
                         logger.info(f"定时任务执行：关机 - {datetime.datetime.fromtimestamp(task['time']).strftime('%Y-%m-%d %H:%M')}")
@@ -2006,17 +1997,18 @@ class Game(Plugin):
         # 生成地图显示
         for pos in range(total_blocks):
             block = self.monopoly.get_block_info(pos)
-            owner = self.monopoly.get_property_owner(pos)
+            property_data = self.monopoly.properties_data.get(str(pos), {})
+            owner_id = property_data.get('owner')
             
             # 获取地块显示符号
             if pos == current_position:
                 symbol = "👤"  # 玩家当前位置
             elif block['type'] == '起点':
                 symbol = "🏁"
-            elif owner:
+            elif owner_id:
                 # 如果有主人，显示房屋等级
-                level = self.monopoly.properties_data[str(pos)].get('level', 1)
-                symbols = ["🏠", "🏘️", "🏰"]  # 不同等级的显示
+                level = property_data.get('level', 1)
+                symbols = ["🏠", "��️", "🏰"]  # 不同等级的显示
                 symbol = symbols[level - 1]
             else:
                 # 根据地块类型显示不同符号
@@ -2026,16 +2018,18 @@ class Game(Plugin):
                     "地级市": "🏣",
                     "县城": "🏘️",
                     "乡村": "🏡",
-                    "空地": "���"
+                    "空地": "⬜"
                 }
                 symbol = type_symbols.get(block['type'], "⬜")
                 
             # 添加地块信息
             block_info = f"{symbol} {pos}:{block['name']}"
-            if owner:
-                owner_player = self.get_player(owner)
-                owner_name = owner_player.nickname if owner_player else owner
-                block_info += f"({owner_name})"
+            if owner_id:
+                owner_player = self.get_player(owner_id)
+                if owner_player:
+                    block_info += f"({owner_player.nickname})"
+                else:
+                    block_info += f"(未知)"
                 
             if pos == current_position:
                 block_info += " ← 当前位置"
