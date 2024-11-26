@@ -21,7 +21,7 @@ from .monopoly import MonopolySystem
 @plugins.register(
     name="Game",
     desc="一个简单的文字游戏系统",
-    version="0.2.1",
+    version="0.2.2",
     author="assistant",
     desire_priority=0
 )
