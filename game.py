@@ -248,7 +248,7 @@ class Game(Plugin):
             
         # 检查金币是否足够
         if int(player.gold) < self.REMINDER_COST:
-            return f"设置提醒需要{self.REMINDER_COST}金币，的金币不足"
+            return f"设置提醒需要{self.REMINDER_COST}金币，金币不足"
             
         # 扣除金币
         new_gold = int(player.gold) - self.REMINDER_COST
@@ -586,7 +586,7 @@ class Game(Plugin):
         })
         
         result = [
-            f"🎲 owner {steps} 点",
+            f"🎲 掷出 {steps} 点",
             f"来到了 {block['name']}"
         ]
         
@@ -1284,6 +1284,9 @@ class Game(Plugin):
         if not msg.is_group:
             return "只能在群聊中使用攻击功能"
         
+        # 获取物品信息
+        items_info = self.item_system.get_all_items()  # 添加这行来获取物品信息
+        
         # 解析命令参数
         parts = content.split()
         if len(parts) < 2 or not parts[1].startswith('@'):
@@ -1553,11 +1556,6 @@ class Game(Plugin):
         except Exception as e:
             logger.error(f"装备物品出错: {e}")
             return "装备物品时发生错误"
-        except Exception as e:
-            logger.error(f"装备物品出错: {e}")
-            return "装备物品时发生错误"
-            logger.error(f"装备物品出错: {e}")
-            return "装备物品时发生错误"
 
     def _restore_game_state(self):
         """从进程锁文件恢复游戏状态"""
@@ -1810,7 +1808,7 @@ class Game(Plugin):
                     # 执行定时任务
                     if task['action'] == 'start':
                         self.game_status = True
-                        logger.info(f"定时任务执行：开��� - {datetime.datetime.fromtimestamp(task['time']).strftime('%Y-%m-%d %H:%M')}")
+                        logger.info(f"定时任务执行：开机 - {datetime.datetime.fromtimestamp(task['time']).strftime('%Y-%m-%d %H:%M')}")
                     elif task['action'] == 'stop':
                         self.game_status = False
                         logger.info(f"定时任务执行：关机 - {datetime.datetime.fromtimestamp(task['time']).strftime('%Y-%m-%d %H:%M')}")
@@ -1993,7 +1991,7 @@ class Game(Plugin):
         
         result = ["🗺️ 大富翁地图"]
         result.append("————————————")
-        
+
         # 生成地图显示
         for pos in range(total_blocks):
             block = self.monopoly.get_block_info(pos)

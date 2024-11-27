@@ -23,7 +23,8 @@
    ```
    #installp https://github.com/xiaoqidaov2/game.git
    ```
-2. **开始游戏**：选择你想参与的活动，开始你的游戏之旅。
+2. **配置插件**：请务必在 ChatGPT on WeChat 的配置文件中设置 `hot_reload = true`，以确保插件能够正常运行。
+3. **开始游戏**：选择你想参与的活动，开始你的游戏之旅。
 
 ![钓鱼系统界面](https://github.com/user-attachments/assets/ec039c64-de58-4c5c-83ef-97e2c61643d3)
 
