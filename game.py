@@ -853,82 +853,92 @@ class Game(Plugin):
         return "\n".join(battle_log)
     
     def use_item(self, user_id, content):
-        """使用物品功能"""
-        try:
-            # 解析命令，格式为 "使用 物品名" 或 "使用 物品名 数量"
-            parts = content.split()
-            if len(parts) < 2:
-                return "使用格式错误！请使用: 使用 物品名 [数量]"
-            
-            item_name = parts[1]
-            amount = 1  # 默认使用1个
-            if len(parts) > 2:
-                amount = int(parts[2])
-                if amount <= 0:
-                    return "使用数量必须大于0"
-        except (IndexError, ValueError):
-            return "使用格式错误！请使用: 使用 物品名 [数量]"
-        
-        # 检查玩家是否存在
-        player = self.get_player(user_id)
-        if not player:
-            return "您还没注册,请先注册 "
-        
-        # 获取物品信息
-        items = self.get_shop_items()
-        if item_name not in items:
-            return "没有这个物品"
-        
-        # 检查背包中是否有足够的物品
-        inventory = player.inventory  # 直接使用列表，不需要json.loads
-        item_count = inventory.count(item_name)
-        if item_count < amount:
-            return f"背包中只有 {item_count} 个 {item_name}"
-        
-        # 获取物品类型和效果
-        item = items[item_name]
-        
-        # 判断物品类型
-        if item.get('type') != 'consumable':
-            return "该物品不能直接使用"
-        
-        # 计算恢复效果
-        current_hp = int(player.hp)
-        max_hp = int(player.max_hp)
-        heal_amount = int(item.get('hp', 0)) * amount
-        
-        # 计算新的生命值
-        new_hp = min(current_hp + heal_amount, max_hp)
-        
-        # 从背包中移除物品
-        for _ in range(amount):
-            inventory.remove(item_name)
-        
-        # 添加物品使用冷却时间
-        current_time = int(time.time())
-        try:
-            last_use = player.last_item_use
-        except AttributeError:
-            # 如果属性不存在，则默认为0
-            last_use = 0
-        
-        if current_time - int(last_use) < 5:  # 5秒冷却时间
-            return f"物品使用太频繁，请等待{5 - (current_time - int(last_use))}秒"
-        
-        # 更新玩家数据时添加使用时间
-        updates = {
-            'inventory': json.dumps(inventory),
-            'hp': str(new_hp),
-            'last_item_use': str(current_time)
-        }
-        
-        # 如果玩家数据中没有last_item_use字段，确保它被添加到标准字段中
-        if hasattr(player, 'standard_fields') and player.standard_fields and 'last_item_use' not in player.standard_fields:
-            player.standard_fields.append('last_item_use')
-        
-        player.update_data(updates)
-        
-        return f"使用 {amount} 个 {item_name}，恢复 {new_hp - current_hp} 点生命值！\n当前生命值: {new_hp}/{max_hp}"
+       """使用物品功能"""
+       try:
+           # 解析命令，格式为 "使用 物品名" 或 "使用 物品名 数量"
+           parts = content.split()
+           if len(parts) < 2:
+               return "使用格式错误！请使用: 使用 物品名 [数量]"
+           
+           item_name = parts[1]
+           amount = 1  # 默认使用1个
+           if len(parts) > 2:
+               amount = int(parts[2])
+               if amount <= 0:
+                   return "使用数量必须大于0"
+       except (IndexError, ValueError):
+           return "使用格式错误！请使用: 使用 物品名 [数量]"
+       
+       # 检查玩家是否存在
+       player = self.get_player(user_id)
+       if not player:
+           return "您还没注册,请先注册 "
+       
+       # 获取物品信息
+       items = self.get_shop_items()
+       if item_name not in items:
+           return "没有这个物品"
+       
+       # 检查背包中是否有足够的物品
+       inventory = player.inventory  
+       item_count = inventory.count(item_name)
+       if item_count < amount:
+           return f"背包中只有 {item_count} 个 {item_name}"
+       
+       # 获取物品类型和效果
+       item = items[item_name]
+       
+       # 判断物品类型
+       if item.get('type') != 'consumable':
+           return "该物品不能直接使用"
+       
+       # 获取护甲提供的生命值加成
+       hp_bonus = 0
+       if player.equipped_armor:
+           items_info = self.item_system.get_all_items()
+           if player.equipped_armor in items_info:
+               armor_info = items_info[player.equipped_armor]
+               hp_bonus = int(armor_info.get('hp', 0))
+       
+       # 计算总的生命值上限（基础 + 装备加成）
+       total_max_hp = int(player.max_hp) + hp_bonus
+       
+       # 计算恢复效果
+       current_hp = int(player.hp)
+       heal_amount = int(item.get('hp', 0)) * amount
+       
+       # 计算新的生命值，使用总的生命值上限
+       new_hp = min(current_hp + heal_amount, total_max_hp)
+       
+       # 从背包中移除物品
+       for _ in range(amount):
+           inventory.remove(item_name)
+       
+       # 添加物品使用冷却时间
+       current_time = int(time.time())
+       try:
+           last_use = player.last_item_use
+       except AttributeError:
+           last_use = 0
+       
+       if current_time - int(last_use) < 5:  # 5秒冷却时间
+           return f"物品使用太频繁，请等待{5 - (current_time - int(last_use))}秒"
+       
+       # 更新玩家数据
+       updates = {
+           'inventory': json.dumps(inventory),
+           'hp': str(new_hp),
+           'last_item_use': str(current_time)
+       }
+       
+       # 如果玩家数据中没有last_item_use字段，确保它被添加到标准字段中
+       if hasattr(player, 'standard_fields') and player.standard_fields and 'last_item_use' not in player.standard_fields:
+           player.standard_fields.append('last_item_use')
+       
+       player.update_data(updates)
+       
+       return f"使用 {amount} 个 {item_name}，恢复 {new_hp - current_hp} 点生命值！\n当前生命值: {new_hp}/{total_max_hp}"        
+    
     
     
     def get_player_status(self, user_id):
