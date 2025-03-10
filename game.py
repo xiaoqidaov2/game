@@ -667,7 +667,7 @@ class Game(Plugin):
     def _generate_monster(self, player):
         """根据玩家等级生成怪物"""
         player_level = int(player.level)
-        level_factor = 1 + (player_level - 1) * 0.2
+        level_factor = 1 + (player_level - 1) * 0.35
         
         monsters = [
             {
@@ -678,257 +678,371 @@ class Game(Plugin):
                 'exp': int(20 * level_factor),
                 'gold': int(30 * level_factor)
             },
-            # ... 其他森林怪物
+            {
+                'name': '宝箱怪',
+                'hp': int(200 * level_factor),
+                'attack': int(15 * level_factor),
+                'defense': int(10 * level_factor),
+                'exp': int(50 * level_factor),
+                'gold': int(300 * level_factor)
+            }
         ]
         
-        monster = random.choice(monsters)
-        if random.random() < 0.15:  # 15%概率变异
+        # 3级以上添加精英怪
+        if player_level >= 3:
+            monsters.append({
+                'name': '精英怪',
+                'hp': int(150 * level_factor),
+                'attack': int(15 * level_factor),
+                'defense': int(20 * level_factor),
+                'exp': int(60 * level_factor),
+                'gold': int(200 * level_factor)
+            })
+        
+        # 5级以上添加Boss
+        if player_level >= 5:
+            monsters.append({
+                'name': 'Boss',
+                'hp': int(500 * level_factor),
+                'attack': int(28 * level_factor),
+                'defense': int(30 * level_factor),
+                'exp': int(100 * level_factor),
+                'gold': int(500 * level_factor)
+            })
+        
+        # 根据等级设置不同的权重
+        if player_level < 3:
+            weights = [
+                0.95,  # 史莱姆 95%
+                0.05   # 宝箱怪 5%
+            ]
+        elif player_level < 5:
+            weights = [
+                0.75,  # 史莱姆 75%
+                0.1,   # 宝箱怪 10%
+                0.15   # 精英怪 15%
+            ]
+        else:
+            weights = [
+                0.45,  # 史莱姆 45%
+                0.15,  # 宝箱怪 15%
+                0.3,   # 精英怪 30%
+                0.1    # Boss 10%
+            ]
+        
+        monster = random.choices(monsters, weights=weights)[0]
+        
+        # 变异逻辑
+        if random.random() < 0.15:
             monster['name'] = f"变异{monster['name']}"
             monster['hp'] = int(monster['hp'] * 1.5)
             monster['attack'] = int(monster['attack'] * 1.3)
             monster['defense'] = int(monster['defense'] * 1.2)
             monster['exp'] = int(monster['exp'] * 1.5)
             monster['gold'] = int(monster['gold'] * 1.5)
-            
+        
         return monster
-
+        
+        
     def _battle(self, user_id, monster):
-        """战斗系统"""
-        player = self.get_player(user_id)
-        
-        # 获取玩家基础属性
-        player_base_hp = int(player.hp)
-        player_base_attack = int(player.attack)
-        player_base_defense = int(player.defense)
-        
-        # 获取装备加成
-        weapon_bonus = self.equipment_system.get_weapon_bonus(player)
-        armor_reduction = self.equipment_system.get_armor_reduction(player)
-        
-        # 获取护甲提供的生命值加成
-        hp_bonus = 0
-        if player.equipped_armor:
-            items_info = self.item_system.get_all_items()
-            if player.equipped_armor in items_info:
-                armor_info = items_info[player.equipped_armor]
-                hp_bonus = int(armor_info.get('hp', 0))
-        
-        # 计算总属性
-        player_total_hp = player_base_hp + hp_bonus
-        player_total_attack = player_base_attack + weapon_bonus
-        player_total_defense = player_base_defense + int(armor_reduction * player_base_defense)
-        
-        monster_hp = monster['hp']
-        monster_max_hp = monster['hp']
-        monster_defense = monster['defense']
-        
-        battle_log = [f"⚔️ 遭遇了 {monster['name']}"]
-        battle_log.append(f"\n你的属性:")
-        battle_log.append(f"❤️ 生命值: {player_total_hp} (基础{player_base_hp} / 装备{hp_bonus})")
-        battle_log.append(f"⚔️ 攻击力: {player_total_attack} (基础{player_base_attack} / 装备{weapon_bonus})")
-        battle_log.append(f"🛡️ 防御力: {player_total_defense} (基础{player_base_defense} / 装备{int(armor_reduction * player_base_defense)})")
-        
-        battle_log.append(f"\n怪物属性:")
-        battle_log.append(f"❤️ 生命值: {monster['hp']}")
-        battle_log.append(f"⚔️ 攻击力: {monster['attack']}")
-        battle_log.append(f"🛡️ 防御力: {monster['defense']}")
-        
-        # 怪物是否狂暴状态
-        is_berserk = False
-        
-        round_num = 1
-        important_events = []
-        
-        # 使用总生命值进行战斗
-        player_hp = player_total_hp
-        
-        while player_hp > 0 and monster_hp > 0:
-            # 玩家攻击
-            damage = max(1, player_total_attack - monster_defense)
-            final_damage = int(damage * random.uniform(0.8, 1.2))
-            monster_hp -= final_damage
-            
-            if round_num <= 5:
-                battle_log.append(f"\n第{round_num}回合")
-                battle_log.append(f"你对{monster['name']}造成 {final_damage} 点伤害")
-            
-            # 检查怪物是否进入狂暴状态
-            if not is_berserk and monster_hp < monster_max_hp * 0.3 and random.random() < 0.4:
-                is_berserk = True
-                monster['attack'] = int(monster['attack'] * 1.5)
-                if round_num <= 5:
-                    battle_log.append(f"💢 {monster['name']}进入狂暴状态！")
-                else:
-                    important_events.append(f"第{round_num}回合: {monster['name']}进入狂暴状态！")
-            
-            # 怪物反击
-            if monster_hp > 0:
-                damage_multiplier = random.uniform(0.8, 1.2)
-                base_damage = max(1, monster['attack'] - player_total_defense)
-                monster_damage = int(base_damage * damage_multiplier)
-                player_hp -= monster_damage
-                
-                # 狂暴状态下吸血
-                if is_berserk:
-                    life_steal = int(monster_damage * 0.3)
-                    monster_hp = min(monster_max_hp, monster_hp + life_steal)
-                    if round_num <= 5:
-                        battle_log.append(f"{monster['name']}对你造成 {monster_damage} 点伤害，并吸取了 {life_steal} 点生命值")
-                else:
-                    if round_num <= 5:
-                        battle_log.append(f"{monster['name']}对你造成 {monster_damage} 点伤害")
-            
-            round_num += 1
-            
-        if round_num > 5:
-            battle_log.append(f"\n战斗持续了{round_num}回合")
-            if important_events:
-                battle_log.append("重要事件:")
-                battle_log.extend(important_events)
-            
-        if player_hp > 0:
-            # 根据怪物等级增加经验值
-            player_level = int(player.level)
-            monster_level = int(monster['exp'] / 15) # 根据基础经验值估算怪物等级
-            level_diff = monster_level - player_level
-            exp_multiplier = 1.0
-            
-            if level_diff > 0:
-                exp_multiplier = 1 + (level_diff * 0.2) # 每高一级增加20%经验
-            elif level_diff < 0:
-                exp_multiplier = max(0.2, 1 + (level_diff * 0.1)) # 每低一级减少10%经验,最低20%
-                
-            exp_gain = int(monster['exp'] * exp_multiplier)
-            gold_gain = monster['gold']
-            
-            new_exp = int(float(player.exp)) + exp_gain
-            new_gold = int(player.gold) + gold_gain
-            level_up = False
-            
-            exp_needed = 100 * (1 + (int(player.level) - 1) * 0.5)
-            if new_exp >= exp_needed:
-                new_level = int(player.level) + 1
-                new_exp -= exp_needed
-                level_up = True
-                
-                # 使用固定增长值
-                hp_increase = 50      # 每级+50血量
-                attack_increase = 15  # 每级+15攻击
-                defense_increase = 10 # 每级+10防御
-                
-                new_max_hp = int(player.max_hp) + hp_increase
-                new_attack = int(player.attack) + attack_increase
-                new_defense = int(player.defense) + defense_increase
-                
-                self._update_player_data(user_id, {
-                    'level': str(new_level),
-                    'max_hp': str(new_max_hp),
-                    'attack': str(new_attack),
-                    'defense': str(new_defense)
-                })
-            
-            self._update_player_data(user_id, {
-                'hp': str(player_hp),
-                'exp': str(new_exp),
-                'gold': str(new_gold)
-            })
-            
-            battle_log.append(f"\n🎉 战斗胜利")
-            if exp_multiplier != 1.0:
-                battle_log.append(f"经验值倍率: x{exp_multiplier:.1f}")
-            battle_log.append(f"获得 {exp_gain} 经验值")
-            battle_log.append(f"获得 {gold_gain} 金币")
-            
-            if level_up:
-                battle_log.append(f"\n🆙 升级啦！当前等级 {new_level}")
-                battle_log.append("属性提升：")
-                battle_log.append(f"❤️ 生命上限 +{hp_increase}")
-                battle_log.append(f"⚔️ 攻击力 +{attack_increase}")
-                battle_log.append(f"🛡️ 防御力 +{defense_increase}")
-        else:
-            self._update_player_data(user_id, {'hp': '0'})
-            battle_log.append(f"\n💀 战斗失败")
-            battle_log.append("你被打倒了，需要使用药品恢复生命值")
-        
-        return "\n".join(battle_log)
+       """战斗系统"""
+       player = self.get_player(user_id)
+       
+       # 获取玩家基础属性
+       player_base_hp = int(player.hp)
+       player_base_attack = int(player.attack)
+       player_base_defense = int(player.defense)
+       
+       # 获取装备加成
+       weapon_bonus = self.equipment_system.get_weapon_bonus(player)
+       armor_reduction = self.equipment_system.get_armor_reduction(player)
+       
+       # 获取护甲提供的生命值加成
+       hp_bonus = 0
+       if player.equipped_armor:
+           items_info = self.item_system.get_all_items()
+           if player.equipped_armor in items_info:
+               armor_info = items_info[player.equipped_armor]
+               hp_bonus = int(armor_info.get('hp', 0))
+       
+       # 计算总属性
+       player_total_hp = player_base_hp + hp_bonus
+       player_total_attack = player_base_attack + weapon_bonus
+       player_total_defense = player_base_defense + int(armor_reduction * player_base_defense)
+       
+       monster_hp = monster['hp']
+       monster_max_hp = monster['hp']
+       monster_defense = monster['defense']
+       
+       battle_log = [f"⚔️ 遭遇了 {monster['name']}"]
+       battle_log.append(f"\n你的属性:")
+       battle_log.append(f"❤️ 生命值: {player_total_hp} (基础{player_base_hp} / 装备{hp_bonus})")
+       battle_log.append(f"⚔️ 攻击力: {player_total_attack} (基础{player_base_attack} / 装备{weapon_bonus})")
+       battle_log.append(f"🛡️ 防御力: {player_total_defense} (基础{player_base_defense} / 装备{int(armor_reduction * player_base_defense)})")
+       
+       battle_log.append(f"\n怪物属性:")
+       battle_log.append(f"❤️ 生命值: {monster['hp']}")
+       battle_log.append(f"⚔️ 攻击力: {monster['attack']}")
+       battle_log.append(f"🛡️ 防御力: {monster['defense']}")
+       
+       # 怪物是否狂暴状态
+       is_berserk = False
+       
+       round_num = 1
+       important_events = []
+       
+       # 使用总生命值进行战斗
+       player_hp = player_total_hp
+       
+       while player_hp > 0 and monster_hp > 0:
+           # 玩家攻击阶段
+           damage = max(1, player_total_attack - monster_defense)
+           final_damage = int(damage * random.uniform(0.8, 1.2))
+           monster_hp -= final_damage
+           
+           if round_num <= 5:
+               battle_log.append(f"\n第{round_num}回合")
+               battle_log.append(f"你对{monster['name']}造成 {final_damage} 点伤害")
+
+           # 判断怪物是否死亡
+           if monster_hp <= 0:
+               break
+
+           # 检查怪物是否进入狂暴状态
+           if not is_berserk and monster_hp < monster_max_hp * 0.3 and random.random() < 0.4:
+               is_berserk = True
+               monster['attack'] = int(monster['attack'] * 1.5)
+               if round_num <= 5:
+                   battle_log.append(f"💢 {monster['name']}进入狂暴状态！")
+               else:
+                   important_events.append(f"第{round_num}回合: {monster['name']}进入狂暴状态！")
+           
+           # 怪物反击阶段
+           damage_multiplier = random.uniform(0.8, 1.2)
+           base_damage = max(1, monster['attack'] - player_total_defense)
+           monster_damage = int(base_damage * damage_multiplier)
+           player_hp -= monster_damage
+           
+           # 狂暴状态下吸血
+           if is_berserk:
+               life_steal = int(monster_damage * 0.3)
+               monster_hp = min(monster_max_hp, monster_hp + life_steal)
+               if round_num <= 5:
+                   battle_log.append(f"{monster['name']}对你造成 {monster_damage} 点伤害，并吸取了 {life_steal} 点生命值")
+           else:
+               if round_num <= 5:
+                   battle_log.append(f"{monster['name']}对你造成 {monster_damage} 点伤害")
+           
+           round_num += 1
+           
+       if round_num > 5:
+           battle_log.append(f"\n战斗持续了{round_num}回合")
+           if important_events:
+               battle_log.append("重要事件:")
+               battle_log.extend(important_events)
+           
+       if player_hp > 0:
+           # 根据怪物等级增加经验值
+           player_level = int(player.level)
+           monster_level = int(monster['exp'] / 15) # 根据基础经验值估算怪物等级
+           level_diff = monster_level - player_level
+           exp_multiplier = 1.0
+           
+           if level_diff > 0:
+               exp_multiplier = 1 + (level_diff * 0.2) # 每高一级增加20%经验
+           elif level_diff < 0:
+               exp_multiplier = max(0.2, 1 + (level_diff * 0.1)) # 每低一级减少10%经验,最低20%
+           
+           exp_gain = int(monster['exp'] * exp_multiplier)
+           gold_gain = monster['gold']
+           
+           # Boss战掉落装备判定
+           drops = []
+           if monster['name'] == 'Boss' or monster['name'] == '变异Boss':
+               inventory = player.inventory
+               
+               # 装备掉落配置
+               equipment_drop_config = {
+                   'drops': [
+                       {'name': '精钢剑', 'chance': 0.1},
+                       {'name': '精钢甲', 'chance': 0.15},
+                       {'name': '符文剑', 'chance': 0.1},
+                       {'name': '符文甲', 'chance': 0.15},
+                       {'name': '龙骨剑', 'chance': 0.2},
+                       {'name': '龙鳞甲', 'chance': 0.2},
+                       {'name': None, 'chance': 0.1}  # 不掉落的概率
+                   ]
+               }
+               
+               # 检查概率总和
+               total_chance = sum(item['chance'] for item in equipment_drop_config['drops'])
+               
+               # 如果概率总和不为1，进行自动归一化
+               if total_chance != 1.0:
+                   for item in equipment_drop_config['drops']:
+                       item['chance'] = item['chance'] / total_chance
+               
+               # 生成0-1的随机数
+               roll = random.random()
+               current_prob = 0
+               
+               # 遍历掉落表，确定掉落结果
+               for item in equipment_drop_config['drops']:
+                   current_prob += item['chance']
+                   if roll < current_prob:
+                       if item['name'] is not None:  # 如果不是空掉落
+                           drops.append(item['name'])
+                           inventory.append(item['name'])
+                           # 只在有掉落时更新背包
+                           self._update_player_data(user_id, {
+                               'inventory': json.dumps(inventory)  # 使用json.dumps确保正确序列化
+                           })
+                       break
+           
+           new_exp = int(float(player.exp)) + exp_gain
+           new_gold = int(player.gold) + gold_gain
+           level_up = False
+           
+           exp_needed = 100 * (1 + (int(player.level) - 1) * 0.5)
+           if new_exp >= exp_needed:
+               new_level = int(player.level) + 1
+               new_exp -= exp_needed
+               level_up = True
+               
+               # 使用固定增长值
+               hp_increase = 50      # 每级+50血量
+               attack_increase = 15  # 每级+15攻击
+               defense_increase = 10 # 每级+10防御
+               
+               new_max_hp = int(player.max_hp) + hp_increase
+               new_attack = int(player.attack) + attack_increase
+               new_defense = int(player.defense) + defense_increase
+               
+               self._update_player_data(user_id, {
+                   'level': str(new_level),
+                   'max_hp': str(new_max_hp),
+                   'attack': str(new_attack),
+                   'defense': str(new_defense)
+               })
+           
+           self._update_player_data(user_id, {
+               'hp': str(player_hp),
+               'exp': str(new_exp),
+               'gold': str(new_gold)
+           })
+           
+           battle_log.append(f"\n🎉 战斗胜利")
+           if drops:
+               battle_log.append("🎁 获得装备：")
+               for item in drops:
+                   battle_log.append(f"- {item}")
+           if exp_multiplier != 1.0:
+               battle_log.append(f"经验值倍率: x{exp_multiplier:.1f}")
+           battle_log.append(f"获得 {exp_gain} 经验值")
+           battle_log.append(f"获得 {gold_gain} 金币")
+           
+           if level_up:
+               battle_log.append(f"\n🆙 升级啦！当前等级 {new_level}")
+               battle_log.append("属性提升：")
+               battle_log.append(f"❤️ 生命上限 +{hp_increase}")
+               battle_log.append(f"⚔️ 攻击力 +{attack_increase}")
+               battle_log.append(f"🛡️ 防御力 +{defense_increase}")
+       else:
+           self._update_player_data(user_id, {'hp': '0'})
+           battle_log.append(f"\n💀 战斗失败")
+           battle_log.append("你被打倒了，需要使用药品恢复生命值")
+       
+       return "\n".join(battle_log)
+       
+
     
     def use_item(self, user_id, content):
-        """使用物品功能"""
-        try:
-            # 解析命令，格式为 "使用 物品名" 或 "使用 物品名 数量"
-            parts = content.split()
-            if len(parts) < 2:
-                return "使用格式错误！请使用: 使用 物品名 [数量]"
-            
-            item_name = parts[1]
-            amount = 1  # 默认使用1个
-            if len(parts) > 2:
-                amount = int(parts[2])
-                if amount <= 0:
-                    return "使用数量必须大于0"
-        except (IndexError, ValueError):
-            return "使用格式错误！请使用: 使用 物品名 [数量]"
-        
-        # 检查玩家是否存在
-        player = self.get_player(user_id)
-        if not player:
-            return "您还没注册,请先注册 "
-        
-        # 获取物品信息
-        items = self.get_shop_items()
-        if item_name not in items:
-            return "没有这个物品"
-        
-        # 检查背包中是否有足够的物品
-        inventory = player.inventory  # 直接使用列表，不需要json.loads
-        item_count = inventory.count(item_name)
-        if item_count < amount:
-            return f"背包中只有 {item_count} 个 {item_name}"
-        
-        # 获取物品类型和效果
-        item = items[item_name]
-        
-        # 判断物品类型
-        if item.get('type') != 'consumable':
-            return "该物品不能直接使用"
-        
-        # 计算恢复效果
-        current_hp = int(player.hp)
-        max_hp = int(player.max_hp)
-        heal_amount = int(item.get('hp', 0)) * amount
-        
-        # 计算新的生命值
-        new_hp = min(current_hp + heal_amount, max_hp)
-        
-        # 从背包中移除物品
-        for _ in range(amount):
-            inventory.remove(item_name)
-        
-        # 添加物品使用冷却时间
-        current_time = int(time.time())
-        try:
-            last_use = player.last_item_use
-        except AttributeError:
-            # 如果属性不存在，则默认为0
-            last_use = 0
-        
-        if current_time - int(last_use) < 5:  # 5秒冷却时间
-            return f"物品使用太频繁，请等待{5 - (current_time - int(last_use))}秒"
-        
-        # 更新玩家数据时添加使用时间
-        updates = {
-            'inventory': json.dumps(inventory),
-            'hp': str(new_hp),
-            'last_item_use': str(current_time)
-        }
-        
-        # 如果玩家数据中没有last_item_use字段，确保它被添加到标准字段中
-        if hasattr(player, 'standard_fields') and player.standard_fields and 'last_item_use' not in player.standard_fields:
-            player.standard_fields.append('last_item_use')
-        
-        player.update_data(updates)
-        
-        return f"使用 {amount} 个 {item_name}，恢复 {new_hp - current_hp} 点生命值！\n当前生命值: {new_hp}/{max_hp}"
+       """使用物品功能"""
+       try:
+           # 解析命令，格式为 "使用 物品名" 或 "使用 物品名 数量"
+           parts = content.split()
+           if len(parts) < 2:
+               return "使用格式错误！请使用: 使用 物品名 [数量]"
+           
+           item_name = parts[1]
+           amount = 1  # 默认使用1个
+           if len(parts) > 2:
+               amount = int(parts[2])
+               if amount <= 0:
+                   return "使用数量必须大于0"
+       except (IndexError, ValueError):
+           return "使用格式错误！请使用: 使用 物品名 [数量]"
+       
+       # 检查玩家是否存在
+       player = self.get_player(user_id)
+       if not player:
+           return "您还没注册,请先注册 "
+       
+       # 获取物品信息
+       items = self.get_shop_items()
+       if item_name not in items:
+           return "没有这个物品"
+       
+       # 检查背包中是否有足够的物品
+       inventory = player.inventory  
+       item_count = inventory.count(item_name)
+       if item_count < amount:
+           return f"背包中只有 {item_count} 个 {item_name}"
+       
+       # 获取物品类型和效果
+       item = items[item_name]
+       
+       # 判断物品类型
+       if item.get('type') != 'consumable':
+           return "该物品不能直接使用"
+       
+       # 获取护甲提供的生命值加成
+       hp_bonus = 0
+       if player.equipped_armor:
+           items_info = self.item_system.get_all_items()
+           if player.equipped_armor in items_info:
+               armor_info = items_info[player.equipped_armor]
+               hp_bonus = int(armor_info.get('hp', 0))
+       
+       # 计算总的生命值上限（基础 + 装备加成）
+       total_max_hp = int(player.max_hp) + hp_bonus
+       
+       # 计算恢复效果
+       current_hp = int(player.hp)
+       heal_amount = int(item.get('hp', 0)) * amount
+       
+       # 计算新的生命值，使用总的生命值上限
+       new_hp = min(current_hp + heal_amount, total_max_hp)
+       
+       # 从背包中移除物品
+       for _ in range(amount):
+           inventory.remove(item_name)
+       
+       # 添加物品使用冷却时间
+       current_time = int(time.time())
+       try:
+           last_use = player.last_item_use
+       except AttributeError:
+           last_use = 0
+       
+       if current_time - int(last_use) < 5:  # 5秒冷却时间
+           return f"物品使用太频繁，请等待{5 - (current_time - int(last_use))}秒"
+       
+       # 更新玩家数据
+       updates = {
+           'inventory': json.dumps(inventory),
+           'hp': str(new_hp),
+           'last_item_use': str(current_time)
+       }
+       
+       # 如果玩家数据中没有last_item_use字段，确保它被添加到标准字段中
+       if hasattr(player, 'standard_fields') and player.standard_fields and 'last_item_use' not in player.standard_fields:
+           player.standard_fields.append('last_item_use')
+       
+       player.update_data(updates)
+       
+       return f"使用 {amount} 个 {item_name}，恢复 {new_hp - current_hp} 点生命值！\n当前生命值: {new_hp}/{total_max_hp}"        
+    
     
     
     def get_player_status(self, user_id):
